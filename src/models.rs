@@ -37,6 +37,12 @@ pub(crate) struct TableComponentDeriveInput {
     pub(crate) head_cell_renderer: Option<IdentString>,
 
     #[darling(default)]
+    pub(crate) thead_renderer: Option<IdentString>,
+
+    #[darling(default)]
+    pub(crate) tbody_renderer: Option<IdentString>,
+
+    #[darling(default)]
     pub(crate) selection_mode: SelectionMode,
 
     #[darling(default)]

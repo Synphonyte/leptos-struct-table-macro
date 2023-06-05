@@ -225,6 +225,8 @@ impl ToTokens for TableComponentDeriveInput {
             ref head_row_class,
             ref head_cell_renderer,
             ref selection_mode,
+            ref thead_renderer,
+            ref tbody_renderer,
             sortable,
         } = *self;
 
@@ -239,6 +241,16 @@ impl ToTokens for TableComponentDeriveInput {
             .as_ref()
             .map(|r| r.as_ident().clone())
             .unwrap_or_else(|| syn::Ident::new("tr", head_row_renderer.span()));
+
+        let thead_renderer = thead_renderer
+            .as_ref()
+            .map(|r| r.as_ident().clone())
+            .unwrap_or_else(|| syn::Ident::new("thead", thead_renderer.span()));
+
+        let tbody_renderer = tbody_renderer
+            .as_ref()
+            .map(|r| r.as_ident().clone())
+            .unwrap_or_else(|| syn::Ident::new("tbody", tbody_renderer.span()));
 
         let tag = tag
             .as_ref()
@@ -441,10 +453,13 @@ impl ToTokens for TableComponentDeriveInput {
 
                 view! { cx,
                     <#tag class=class_provider.table(&class)>
-                        <#head_row_renderer class=class_provider.head_row(#head_row_class)>
-                            #(#titles)*
-                        </#head_row_renderer>
+                        <#thead_renderer>
+                            <#head_row_renderer class=class_provider.head_row(#head_row_class)>
+                                #(#titles)*
+                            </#head_row_renderer>
+                        </#thead_renderer>
 
+                        <#tbody_renderer>
                         <Transition fallback=move || view! {cx, <tr><td colspan="4">"Loading...!"</td></tr> }>
                             { move || {
                                 let is_selected = #selector;
@@ -484,6 +499,7 @@ impl ToTokens for TableComponentDeriveInput {
                                 })
                             } }
                         </Transition>
+                        </#tbody_renderer>
                     </#tag>
                 }
             }
