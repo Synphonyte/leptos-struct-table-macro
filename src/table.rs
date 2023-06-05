@@ -41,7 +41,10 @@ fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usiz
 fn get_field_getter_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Error> {
     if let syn::PathArguments::AngleBracketed(arg) = &segment.arguments {
         if arg.args.len() != 1 {
-            return Err(Error::new_spanned(&segment.ident, "`FieldGetter` should have one type argument"));
+            return Err(Error::new_spanned(
+                &segment.ident,
+                "`FieldGetter` should have one type argument",
+            ));
         }
 
         let arg = arg.args.first().expect("just checked above");
@@ -49,14 +52,23 @@ fn get_field_getter_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Err
         if let syn::GenericArgument::Type(Type::Path(path)) = arg {
             Ok(&path.path.segments.last().expect("not empty").ident)
         } else {
-            Err(Error::new_spanned(&segment.ident, "`FieldGetter` should have one type argument"))
+            Err(Error::new_spanned(
+                &segment.ident,
+                "`FieldGetter` should have one type argument",
+            ))
         }
     } else {
-        Err(Error::new_spanned(&segment.ident, "`FieldGetter` should have one type argument"))
+        Err(Error::new_spanned(
+            &segment.ident,
+            "`FieldGetter` should have one type argument",
+        ))
     }
 }
 
-fn get_default_renderer_for_field_getter(props: &TokenStream, segment: &PathSegment) -> TokenStream {
+fn get_default_renderer_for_field_getter(
+    props: &TokenStream,
+    segment: &PathSegment,
+) -> TokenStream {
     match get_field_getter_inner_type(segment) {
         Ok(type_ident) => get_default_renderer_for_type(props, type_ident),
         Err(err) => err.to_compile_error(),
@@ -73,8 +85,8 @@ fn get_default_renderer_for_type(props: &TokenStream, type_ident: &Ident) -> Tok
                 <#component_ident #props />
             }
         }
-        "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8"
-        | "i16" | "i32" | "i64" | "i128" => quote! {
+        "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16"
+        | "i32" | "i64" | "i128" => quote! {
             <DefaultNumberTableCellRenderer #props />
         },
         _ => quote! {
@@ -167,7 +179,11 @@ fn get_data_provider_logic(
     for f in fields.into_iter() {
         let name = f.ident.as_ref().expect("named field");
         let TableDataField {
-            ref ty, skip_sort, skip, ref getter, ..
+            ref ty,
+            skip_sort,
+            skip,
+            ref getter,
+            ..
         } = **f;
 
         if skip_sort || skip {
