@@ -89,6 +89,9 @@ pub(crate) struct TableDataField {
 
     #[darling(default)]
     pub(crate) skip_sort: bool,
+
+    #[darling(default)]
+    pub(crate) getter: Option<IdentString>,
 }
 
 impl TableDataField {

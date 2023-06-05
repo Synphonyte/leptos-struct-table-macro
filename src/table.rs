@@ -2,9 +2,10 @@ use crate::models::{SelectionMode, TableComponentDeriveInput, TableDataField};
 use darling::export::syn::spanned::Spanned;
 use darling::util::IdentString;
 use heck::{ToTitleCase, ToUpperCamelCase};
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use syn::__private::TokenStream2;
-use syn::{Error, Type};
+use syn::{Error, PathSegment, Type};
 
 fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usize) -> TokenStream2 {
     let props = get_props_for_field(name, &field);
@@ -21,30 +22,64 @@ fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usiz
         }
     } else {
         if let Type::Path(path) = &field.ty {
-            let type_ident = &path.path.segments.last().expect("not empty").ident;
+            let segment = path.path.segments.last().expect("not empty");
+            let type_ident = &segment.ident;
 
-            match type_ident.to_string().as_str() {
-                "NaiveDate" | "NaiveDateTime" | "NaiveTime" => {
-                    let component_ident = format!("Default{type_ident}TableCellRenderer");
-                    let component_ident = syn::Ident::new(&component_ident, type_ident.span());
-
-                    quote! {
-                        <#component_ident #props />
-                    }
-                }
-                "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8"
-                | "i16" | "i32" | "i64" | "i128" => quote! {
-                    <DefaultNumberTableCellRenderer #props />
-                },
-                _ => quote! {
-                    <DefaultTableCellRenderer #props />
-                },
+            if type_ident == "FieldGetter" {
+                get_default_renderer_for_field_getter(&props, segment)
+            } else {
+                get_default_renderer_for_type(&props, type_ident)
             }
         } else {
             quote! {
                 <DefaultTableCellRenderer #props />
             }
         }
+    }
+}
+
+fn get_field_getter_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Error> {
+    if let syn::PathArguments::AngleBracketed(arg) = &segment.arguments {
+        if arg.args.len() != 1 {
+            return Err(Error::new_spanned(&segment.ident, "`FieldGetter` should have one type argument"));
+        }
+
+        let arg = arg.args.first().expect("just checked above");
+
+        if let syn::GenericArgument::Type(Type::Path(path)) = arg {
+            Ok(&path.path.segments.last().expect("not empty").ident)
+        } else {
+            Err(Error::new_spanned(&segment.ident, "`FieldGetter` should have one type argument"))
+        }
+    } else {
+        Err(Error::new_spanned(&segment.ident, "`FieldGetter` should have one type argument"))
+    }
+}
+
+fn get_default_renderer_for_field_getter(props: &TokenStream, segment: &PathSegment) -> TokenStream {
+    match get_field_getter_inner_type(segment) {
+        Ok(type_ident) => get_default_renderer_for_type(props, type_ident),
+        Err(err) => err.to_compile_error(),
+    }
+}
+
+fn get_default_renderer_for_type(props: &TokenStream, type_ident: &Ident) -> TokenStream {
+    match type_ident.to_string().as_str() {
+        "NaiveDate" | "NaiveDateTime" | "NaiveTime" => {
+            let component_ident = format!("Default{type_ident}TableCellRenderer");
+            let component_ident = syn::Ident::new(&component_ident, type_ident.span());
+
+            quote! {
+                <#component_ident #props />
+            }
+        }
+        "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8"
+        | "i16" | "i32" | "i64" | "i128" => quote! {
+            <DefaultNumberTableCellRenderer #props />
+        },
+        _ => quote! {
+            <DefaultTableCellRenderer #props />
+        },
     }
 }
 
@@ -72,8 +107,10 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
         quote! {}
     };
 
+    let getter = get_getter(name, &field.getter, &field.ty);
+
     quote! {
-        value=item.#name.clone()
+        value=item.#getter
         class=class_provider.cell(#class)
         #precision
         #format_string
@@ -82,7 +119,7 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
 
 fn get_selection_logic(
     selection_mode: &SelectionMode,
-    key_type: &syn::Type,
+    key_type: &Type,
 ) -> (TokenStream2, TokenStream2, TokenStream2) {
     match selection_mode {
         SelectionMode::None => (quote! {}, quote! {}, quote! {|_| false}),
@@ -94,6 +131,22 @@ fn get_selection_logic(
             quote! {create_selector(cx, selected_key)},
         ),
         SelectionMode::Multiple => unimplemented!("Multiple selection not implemented yet"),
+    }
+}
+
+fn get_getter(name: &syn::Ident, getter: &Option<IdentString>, ty: &Type) -> TokenStream2 {
+    match getter {
+        Some(getter) => quote! { #getter() },
+        None => {
+            if let Type::Path(path) = &ty {
+                let type_ident = &path.path.segments.last().expect("not empty").ident;
+                if type_ident.to_string().as_str() == "FieldGetter" {
+                    return quote! { #name() };
+                }
+            }
+
+            quote! { #name.clone() }
+        }
     }
 }
 
@@ -114,12 +167,14 @@ fn get_data_provider_logic(
     for f in fields.into_iter() {
         let name = f.ident.as_ref().expect("named field");
         let TableDataField {
-            ref ty, skip_sort, ..
+            ref ty, skip_sort, skip, ref getter, ..
         } = **f;
 
-        if skip_sort {
+        if skip_sort || skip {
             continue;
         }
+
+        let getter = get_getter(name, getter, ty);
 
         let column_name_variant =
             syn::Ident::new(&name.to_string().to_upper_camel_case(), name.span());
@@ -132,14 +187,33 @@ fn get_data_provider_logic(
         } else {
             quote! { #column_name_variant, }
         });
-        column_value_variants.push(quote! {#column_name_variant(#ty),});
+
+        if let Type::Path(path) = &ty {
+            let segment = path.path.segments.last().expect("not empty");
+            let type_ident = &segment.ident;
+
+            if type_ident == "FieldGetter" {
+                match get_field_getter_inner_type(segment) {
+                    Ok(type_ident) => {
+                        column_value_variants.push(quote! {#column_name_variant(#type_ident),});
+                    }
+                    Err(err) => {
+                        return err.to_compile_error();
+                    }
+                }
+            } else {
+                column_value_variants.push(quote! {#column_name_variant(#ty),});
+            }
+        } else {
+            column_value_variants.push(quote! {#column_name_variant(#ty),});
+        }
 
         column_value_cmp_arms.push(quote! {
             (#column_value_enum::#column_name_variant(a), #column_value_enum::#column_name_variant(b)) => a.partial_cmp(b),
         });
 
         column_value_get_arms.push(quote! {
-            #column_name_enum::#column_name_variant => #column_value_enum::#column_name_variant(self.#name.clone()),
+            #column_name_enum::#column_name_variant => #column_value_enum::#column_name_variant(self.#getter),
         });
     }
 
