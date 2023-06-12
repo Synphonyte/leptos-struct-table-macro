@@ -186,7 +186,7 @@ fn get_data_provider_logic(
             ..
         } = **f;
 
-        if skip_sort || skip {
+        if (skip_sort || skip) && !f.key {
             continue;
         }
 
