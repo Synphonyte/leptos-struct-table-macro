@@ -129,10 +129,17 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
         }
     };
 
+    let editable = if field.editable {
+        quote! { true }
+    } else {
+        quote! { false }
+    };
+
     quote! {
         value=item.#getter
         class=class_provider.cell(#class)
         on_change=#on_cell_change
+        editable=#editable
         #precision
         #format_string
     }
