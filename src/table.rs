@@ -121,9 +121,24 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
 
     let getter = get_getter(name, &field.getter, &field.ty);
 
+    let on_cell_change = quote! {
+        move |v| {
+            row_state.update_value(|s| s.#name = v);
+            row_data_provider.update_untracked(|d| d.set_row(i, row_state.get_value()));
+        }
+    };
+
+    let editable = if field.editable {
+        quote! { true }
+    } else {
+        quote! { false }
+    };
+
     quote! {
         value=item.#getter
         class=class_provider.cell(#class)
+        on_change=#on_cell_change
+        editable=#editable
         #precision
         #format_string
     }
@@ -294,6 +309,13 @@ fn get_data_provider_logic(
 
             async fn get_rows(&self, range: std::ops::Range<usize> ) -> Vec<#ident> {
                 leptos_struct_table::get_vec_range_clamped(self, range)
+            }
+
+            fn set_row(&mut self, index: usize, row: #ident) {
+                match self.get_mut(index) {
+                    Some(r) => *r = row,
+                    None => log::warn!("Could not find row with index {index} to update."),
+                }
             }
 
             #set_sorting_impl
@@ -497,6 +519,8 @@ impl ToTokens for TableComponentDeriveInput {
                     // on_row_click(event);
                 };
 
+                let row_data_provider = items.clone();
+
                 let (sorting, set_sorting) = create_signal(cx, std::collections::VecDeque::<(#column_name_enum, ColumnSort)>::new());
 
                 let on_head_click = move |event: TableHeadEvent<#column_name_enum>| {
@@ -571,6 +595,9 @@ impl ToTokens for TableComponentDeriveInput {
                                                 let is_sel = is_selected.clone();
 
                                                 let selected_signal = Signal::derive(cx, move || is_sel(Some(item.#key_field.clone())));
+
+                                                // required to be able to get `item` into on_cell_change
+                                                let row_state = store_value(cx, item.clone());
 
                                                 view! { cx,
                                                     <#row_renderer
