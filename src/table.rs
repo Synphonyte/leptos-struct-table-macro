@@ -123,9 +123,8 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
 
     let on_cell_change = quote! {
         move |v| {
-            let mut new_item = row_state.get_untracked();
-            new_item.#name = v;
-            row_data_provider.update_untracked(|d| d.set_row(i, new_item));
+            row_state.update_value(|s| s.#name = v);
+            row_data_provider.update_untracked(|d| d.set_row(i, row_state.get_value()));
         }
     };
 
@@ -598,7 +597,7 @@ impl ToTokens for TableComponentDeriveInput {
                                                 let selected_signal = Signal::derive(cx, move || is_sel(Some(item.#key_field.clone())));
 
                                                 // required to be able to get `item` into on_cell_change
-                                                let (row_state, _) = create_signal(cx, item.clone());
+                                                let row_state = store_value(cx, item.clone());
 
                                                 view! { cx,
                                                     <#row_renderer
