@@ -8,17 +8,23 @@ use syn::__private::TokenStream2;
 use syn::{Error, PathSegment, Type};
 
 fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usize) -> TokenStream2 {
-    let props = get_props_for_field(name, &field);
+    let getter = get_getter(name, &field.getter, &field.ty);
 
-    let props = quote! {
-        #props
+    let format_props = get_format_props_for_field(name, &field, &getter);
+
+    let index_prop = quote! {
         index=#index
     };
+
+    let class = field.cell_class();
+    let class_prop = quote! { class=class_provider.cell( # class) };
+    
+    let value_prop = quote!{ value=item.#getter };
 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
         quote! {
-            <#ident #props />
+            <#ident #format_props #value_prop #class_prop/>
         }
     } else {
         if let Type::Path(path) = &field.ty {
@@ -26,13 +32,13 @@ fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usiz
             let type_ident = &segment.ident;
 
             if type_ident == "FieldGetter" {
-                get_default_renderer_for_field_getter(&props, segment)
+                get_default_renderer_for_field_getter(&format_props, &class_prop, &value_prop, &index_prop, segment, field, &getter)
             } else {
-                get_default_renderer_for_type(&props, type_ident)
+                get_default_renderer_for_type(&format_props, &class_prop, &value_prop, &index_prop,type_ident, field, &getter)
             }
         } else {
             quote! {
-                <DefaultTableCellRenderer #props />
+                <DefaultTableCellRenderer #format_props #value_prop #class_prop  />
             }
         }
     }
@@ -66,32 +72,108 @@ fn get_field_getter_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Err
 }
 
 fn get_default_renderer_for_field_getter(
-    props: &TokenStream,
+    format_props: &TokenStream,
+    class_prop: &TokenStream,
+    value_prop: &TokenStream,
+    index_prop: &TokenStream,
     segment: &PathSegment,
+    field: &TableDataField,
+    getter: &TokenStream2,
 ) -> TokenStream {
     match get_field_getter_inner_type(segment) {
-        Ok(type_ident) => get_default_renderer_for_type(props, type_ident),
+        Ok(type_ident) => get_default_renderer_for_type(format_props, class_prop, value_prop, index_prop, type_ident, field, getter),
         Err(err) => err.to_compile_error(),
     }
 }
 
-fn get_default_renderer_for_type(props: &TokenStream, type_ident: &Ident) -> TokenStream {
+fn get_default_render_for_inner_type(format_props: &TokenStream, class_prop: &TokenStream, value_prop: &TokenStream2, index_prop: &TokenStream, type_ident: &Ident) -> TokenStream {
     match type_ident.to_string().as_str() {
         "NaiveDate" | "NaiveDateTime" | "NaiveTime" => {
             let component_ident = format!("Default{type_ident}TableCellRenderer");
             let component_ident = syn::Ident::new(&component_ident, type_ident.span());
 
             quote! {
-                <#component_ident #props />
+                <#component_ident #format_props #value_prop #class_prop #index_prop/>
             }
         }
         "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16"
         | "i32" | "i64" | "i128" => quote! {
-            <DefaultNumberTableCellRenderer #props />
+            <DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop/>
         },
         _ => quote! {
-            <DefaultTableCellRenderer #props />
-        },
+            <DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop/>
+        }
+    }
+}
+
+// TODO: Code duplication with get_field_getter_inner_type --> could be merged in one function
+fn get_option_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Error> {
+    if let syn::PathArguments::AngleBracketed(arg) = &segment.arguments {
+        if arg.args.len() != 1 {
+            return Err(Error::new_spanned(
+                &segment.ident,
+                "`Option` should have one type argument",
+            ));
+        }
+
+        let arg = arg.args.first().expect("just checked above");
+
+        if let syn::GenericArgument::Type(Type::Path(path)) = arg {
+            Ok(&path.path.segments.last().expect("not empty").ident)
+        } else {
+            Err(Error::new_spanned(
+                &segment.ident,
+                "`Option` should have one type argument",
+            ))
+        }
+    } else {
+        Err(Error::new_spanned(
+            &segment.ident,
+            "`Option` should have one type argument",
+        ))
+    }
+}
+
+fn get_default_option_renderer(
+    format_props: &TokenStream, class_prop: &TokenStream, index_prop: &TokenStream, type_ident: &Ident, field: &TableDataField, getter: &TokenStream2) -> TokenStream
+{
+    if let Type::Path(path) = &field.ty {
+        let last_segment = path.path.segments.last().expect("not empty");
+
+        return match get_option_inner_type(last_segment) {
+            Ok(inner_type_ident) => {
+                let value_prop = quote! {
+                    value=item.#getter.expect("not None")
+                };
+
+                let none_value = field.none_value.clone().unwrap_or_default();
+                
+                let inner_renderer = get_default_render_for_inner_type(format_props, class_prop, &value_prop, index_prop, inner_type_ident);
+                
+                quote! {
+                    <Show when=move || { item.#getter.is_some() }
+                        fallback=move |cx: Scope| view!{cx, <DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop/>}
+                    >
+                        #inner_renderer
+                    </Show>
+                }
+            },
+            Err(err) => err.to_compile_error(),
+        }
+
+    }
+
+    Error::new_spanned(&type_ident, "Invalid Option type")
+        .to_compile_error()
+
+}
+
+fn get_default_renderer_for_type(format_props: &TokenStream, class_prop: &TokenStream, value_prop: &TokenStream, index_prop: &TokenStream, type_ident: &Ident, field: &TableDataField, getter: &TokenStream2) -> TokenStream {
+
+    if type_ident.to_string().starts_with("Option") {
+        get_default_option_renderer(format_props, class_prop, index_prop, type_ident, field, getter)
+    } else {
+        get_default_render_for_inner_type(format_props, class_prop, value_prop, index_prop, type_ident)
     }
 }
 
@@ -104,9 +186,7 @@ fn get_head_renderer_for_field(head_cell_renderer: &Option<IdentString>) -> Toke
     }
 }
 
-fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream2 {
-    let class = field.cell_class();
-
+fn get_format_props_for_field(name: &syn::Ident, field: &TableDataField, getter: &TokenStream2) -> TokenStream2 {
     let precision = if let Some(p) = &field.format.precision {
         quote! {precision=(#p as usize)}
     } else {
@@ -119,11 +199,7 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
         quote! {}
     };
 
-    let getter = get_getter(name, &field.getter, &field.ty);
-
     quote! {
-        value=item.#getter
-        class=class_provider.cell(#class)
         #precision
         #format_string
     }
@@ -263,7 +339,7 @@ fn get_data_provider_logic(
     };
 
     quote! {
-        #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+        #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Deserialize, Serialize)]
         pub enum #column_name_enum {
             #(#column_name_variants)*
         }
@@ -280,7 +356,7 @@ fn get_data_provider_logic(
         }
 
         impl #ident {
-            fn get(&self, column: #column_name_enum) -> #column_value_enum {
+            pub fn get(&self, column: #column_name_enum) -> #column_value_enum {
                 match column {
                     #(#column_value_get_arms)*
                     _ => unreachable!()
