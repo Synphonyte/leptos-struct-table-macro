@@ -10,7 +10,7 @@ use syn::{Error, PathSegment, Type};
 fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usize) -> TokenStream2 {
     let getter = get_getter(name, &field.getter, &field.ty);
 
-    let format_props = get_format_props_for_field(&field);
+    let format_props = get_format_props_for_field(field);
 
     let index_prop = quote! {
         index=#index
@@ -26,36 +26,34 @@ fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usiz
         quote! {
             <#ident #format_props #value_prop #class_prop #index_prop/>
         }
-    } else {
-        if let Type::Path(path) = &field.ty {
-            let segment = path.path.segments.last().expect("not empty");
-            let type_ident = &segment.ident;
+    } else if let Type::Path(path) = &field.ty {
+        let segment = path.path.segments.last().expect("not empty");
+        let type_ident = &segment.ident;
 
-            if type_ident == "FieldGetter" {
-                get_default_renderer_for_field_getter(
-                    &format_props,
-                    &class_prop,
-                    &value_prop,
-                    &index_prop,
-                    segment,
-                    field,
-                    &getter,
-                )
-            } else {
-                get_default_renderer_for_type(
-                    &format_props,
-                    &class_prop,
-                    &value_prop,
-                    &index_prop,
-                    type_ident,
-                    field,
-                    &getter,
-                )
-            }
+        if type_ident == "FieldGetter" {
+            get_default_renderer_for_field_getter(
+                &format_props,
+                &class_prop,
+                &value_prop,
+                &index_prop,
+                segment,
+                field,
+                &getter,
+            )
         } else {
-            quote! {
-                <DefaultTableCellRenderer #format_props #value_prop #class_prop  />
-            }
+            get_default_renderer_for_type(
+                &format_props,
+                &class_prop,
+                &value_prop,
+                &index_prop,
+                type_ident,
+                field,
+                &getter,
+            )
+        }
+    } else {
+        quote! {
+            <DefaultTableCellRenderer #format_props #value_prop #class_prop  />
         }
     }
 }
@@ -203,7 +201,7 @@ fn get_default_option_renderer(
         };
     }
 
-    Error::new_spanned(&type_ident, "Invalid Option type").to_compile_error()
+    Error::new_spanned(type_ident, "Invalid Option type").to_compile_error()
 }
 
 fn get_default_renderer_for_type(
@@ -302,7 +300,7 @@ fn get_getter(name: &syn::Ident, getter: &Option<IdentString>, ty: &Type) -> Tok
 fn get_data_provider_logic(
     ident: &syn::Ident,
     sortable: bool,
-    fields: &Vec<&TableDataField>,
+    fields: &[&TableDataField],
     column_name_enum: &syn::Ident,
 ) -> TokenStream2 {
     let column_value_enum = &format_ident!("{}ColumnValue", ident);
@@ -313,7 +311,7 @@ fn get_data_provider_logic(
     let mut column_value_cmp_arms = vec![];
     let mut column_value_get_arms = vec![];
 
-    for f in fields.into_iter() {
+    for f in fields.iter() {
         let name = f.ident.as_ref().expect("named field");
         let TableDataField {
             ref ty,
@@ -384,7 +382,7 @@ fn get_data_provider_logic(
     }
 
     assert!(
-        column_name_variants.len() > 0,
+        !column_name_variants.is_empty(),
         "At least one sortable field is required"
     );
 
@@ -502,22 +500,16 @@ impl ToTokens for TableComponentDeriveInput {
             })
             .unwrap_or(quote!(table));
 
-        let row_class = row_class
-            .as_ref()
-            .map(|s| s.clone())
-            .unwrap_or("".to_owned());
+        let row_class = row_class.as_ref().cloned().unwrap_or("".to_owned());
 
-        let head_row_class = head_row_class
-            .as_ref()
-            .map(|s| s.clone())
-            .unwrap_or("".to_owned());
+        let head_row_class = head_row_class.as_ref().cloned().unwrap_or("".to_owned());
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
 
         let column_name_enum = &format_ident!("{}ColumnName", ident);
 
         let data_provider_logic =
-            get_data_provider_logic(&ident, sortable, &fields, &column_name_enum);
+            get_data_provider_logic(ident, sortable, &fields, column_name_enum);
 
         let mut titles = vec![];
         let mut cells = vec![];
@@ -592,7 +584,7 @@ impl ToTokens for TableComponentDeriveInput {
         let component_ident = component_name
             .as_ref()
             .unwrap_or(&default_component_ident_name);
-        let component_ident = syn::Ident::new(&component_ident, ident.span());
+        let component_ident = syn::Ident::new(component_ident, ident.span());
 
         let classes_provider_ident = classes_provider
             .as_ref()
