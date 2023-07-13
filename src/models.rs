@@ -92,7 +92,7 @@ pub(crate) struct TableDataField {
 
     #[darling(default)]
     pub(crate) getter: Option<IdentString>,
-    
+
     #[darling(default)]
     pub(crate) none_value: Option<String>,
 }
