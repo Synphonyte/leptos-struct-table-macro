@@ -24,7 +24,7 @@ fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usiz
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
         quote! {
-            <#ident #format_props #value_prop #class_prop/>
+            <#ident #format_props #value_prop #class_prop #index_prop/>
         }
     } else {
         if let Type::Path(path) = &field.ty {
