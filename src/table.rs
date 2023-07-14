@@ -124,7 +124,7 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
     let on_cell_change = quote! {
         move |v| {
             row_state.update_value(|s| s.#name = v);
-            row_data_provider.update_untracked(|d| d.set_row(i, row_state.get_value()));
+            data_provider.update_value(|d| d.set_row(i, row_state.get_value()));
         }
     };
 
@@ -303,20 +303,8 @@ fn get_data_provider_logic(
             }
         }
 
-        #[async_trait(?Send)]
-        impl TableDataProvider<#ident> for Vec<#ident> {
+        impl TableDataSorting<#ident> for Vec<#ident> {
             type ColumnName = #column_name_enum;
-
-            async fn get_rows(&self, range: std::ops::Range<usize> ) -> Vec<#ident> {
-                leptos_struct_table::get_vec_range_clamped(self, range)
-            }
-
-            fn set_row(&mut self, index: usize, row: #ident) {
-                match self.get_mut(index) {
-                    Some(r) => *r = row,
-                    None => log::warn!("Could not find row with index {index} to update."),
-                }
-            }
 
             #set_sorting_impl
         }
@@ -497,16 +485,17 @@ impl ToTokens for TableComponentDeriveInput {
 
             #[allow(non_snake_case)]
             #[component]
-            pub fn #component_ident<T>(
+            pub fn #component_ident<D>(
                 cx: Scope,
                 #[prop(optional)] class: String,
-                items: RwSignal<T>,
+                data_provider: StoredValue<D>,
                 // #[prop(optional)] on_row_click: Option<FR>,
                 #selection_prop
                 // #[prop(optional)] on_head_click: Option<FH>,
             ) -> impl IntoView
             where
-                T: TableDataProvider<#ident, ColumnName = #column_name_enum> + Clone + PartialEq + core::fmt::Debug + 'static,
+                D: TableDataStorage<#ident> + 'static,
+                //T: TableDataProvider<#ident, ColumnName = #column_name_enum> + Clone + PartialEq + core::fmt::Debug + 'static,
                 // FR: Fn(TableRowEvent<#key_type>) + Clone + 'static,
                 // FH: Fn(FieldValue) + 'static,
             {
@@ -514,12 +503,14 @@ impl ToTokens for TableComponentDeriveInput {
 
                 let (range, set_range) = create_signal(cx, 0..1000);
 
+                let initial_items = data_provider.with_value(|d| d.get_rows(range.get_untracked()));
+                let items = create_rw_signal(cx, initial_items);
+
                 let on_row_select = move |event: TableRowEvent<#key_type>| {
                     #selection_handler
                     // on_row_click(event);
                 };
 
-                let row_data_provider = items.clone();
 
                 let (sorting, set_sorting) = create_signal(cx, std::collections::VecDeque::<(#column_name_enum, ColumnSort)>::new());
 
@@ -550,9 +541,11 @@ impl ToTokens for TableComponentDeriveInput {
 
                 let enum_items = create_resource(cx,
                     move || (range(), sorting(), items.get()),
-                    |(range, _, items)| async move {
-                        let rows = items.get_rows(range).await;
-                        rows.into_iter().enumerate().collect::<Vec<_>>()
+                    move |(range, _, items)| {
+                        //let rows = data_provider.with_value(|d| d.get_rows(range));
+                        async move {
+                            items.into_iter().enumerate().collect::<Vec<_>>()
+                        }
                     }
                 );
 
