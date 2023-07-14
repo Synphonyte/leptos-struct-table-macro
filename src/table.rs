@@ -121,10 +121,20 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
 
     let getter = get_getter(name, &field.getter, &field.ty);
 
-    let on_cell_change = quote! {
-        move |v| {
-            row_state.update_value(|s| s.#name = v);
-            data_provider.update_value(|d| d.set_row(i, row_state.get_value()));
+    let on_cell_change = {
+        if let None = &field.getter {
+            if let Type::Path(path) = &field.ty {
+                let type_ident = &path.path.segments.last().expect("not empty").ident;
+                if type_ident.to_string().as_str() == "FieldGetter" {
+                    return quote! { on_change=move |_| ()};
+                }
+            }
+        }
+        quote! {
+            on_change=move |v| {
+                row_state.update_value(|s| s.#name = v);
+                data_provider.update_value(|d| d.set_row(i, row_state.get_value()));
+            }
         }
     };
 
@@ -137,7 +147,7 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
     quote! {
         value=item.#getter
         class=class_provider.cell(#class)
-        on_change=#on_cell_change
+        #on_cell_change
         editable=#editable
         #precision
         #format_string
