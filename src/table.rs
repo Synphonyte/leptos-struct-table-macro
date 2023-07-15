@@ -506,6 +506,8 @@ impl ToTokens for TableComponentDeriveInput {
                 cx: Scope,
                 #[prop(optional)] class: String,
                 data_provider: StoredValue<D>,
+                #[prop(optional)]
+                range: Option<RwSignal<core::ops::Range<usize>>>,
                 // #[prop(optional)] on_row_click: Option<FR>,
                 #selection_prop
                 // #[prop(optional)] on_head_click: Option<FH>,
@@ -518,7 +520,11 @@ impl ToTokens for TableComponentDeriveInput {
             {
                 let class_provider = #classes_provider_ident::new();
 
-                let (range, set_range) = create_signal(cx, 0..1000);
+                let (range, set_range) = if let Some(r) = range {
+                    r.split()
+                } else {
+                    create_signal(cx, 0..1000)
+                };
 
                 let initial_items = data_provider.with_value(|d| d.get_rows(range.get_untracked()));
                 let items = create_rw_signal(cx, initial_items);
