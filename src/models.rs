@@ -95,6 +95,8 @@ pub(crate) struct TableDataField {
 
     #[darling(default)]
     pub(crate) editable: bool,
+
+    pub(crate) none_value: Option<String>,
 }
 
 impl TableDataField {

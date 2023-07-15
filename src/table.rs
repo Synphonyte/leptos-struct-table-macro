@@ -8,32 +8,52 @@ use syn::__private::TokenStream2;
 use syn::{Error, PathSegment, Type};
 
 fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usize) -> TokenStream2 {
-    let props = get_props_for_field(name, &field);
+    let getter = get_getter(name, &field.getter, &field.ty);
 
-    let props = quote! {
-        #props
+    let format_props = get_format_props_for_field(field);
+
+    let index_prop = quote! {
         index=#index
     };
+
+    let class = field.cell_class();
+    let class_prop = quote! { class=class_provider.cell( # class) };
+
+    let value_prop = quote! { value=item.#getter };
 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
         quote! {
-            <#ident #props />
+            <#ident #format_props #value_prop #class_prop #index_prop/>
+        }
+    } else if let Type::Path(path) = &field.ty {
+        let segment = path.path.segments.last().expect("not empty");
+        let type_ident = &segment.ident;
+
+        if type_ident == "FieldGetter" {
+            get_default_renderer_for_field_getter(
+                &format_props,
+                &class_prop,
+                &value_prop,
+                &index_prop,
+                segment,
+                field,
+                &getter,
+            )
+        } else {
+            get_default_renderer_for_type(
+                &format_props,
+                &class_prop,
+                &value_prop,
+                &index_prop,
+                type_ident,
+                field,
+                &getter,
+            )
         }
     } else {
-        if let Type::Path(path) = &field.ty {
-            let segment = path.path.segments.last().expect("not empty");
-            let type_ident = &segment.ident;
-
-            if type_ident == "FieldGetter" {
-                get_default_renderer_for_field_getter(&props, segment)
-            } else {
-                get_default_renderer_for_type(&props, type_ident)
-            }
-        } else {
-            quote! {
-                <DefaultTableCellRenderer #props />
-            }
+        quote! {
+            <DefaultTableCellRenderer #format_props #value_prop #class_prop  />
         }
     }
 }
@@ -66,32 +86,150 @@ fn get_field_getter_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Err
 }
 
 fn get_default_renderer_for_field_getter(
-    props: &TokenStream,
+    format_props: &TokenStream,
+    class_prop: &TokenStream,
+    value_prop: &TokenStream,
+    index_prop: &TokenStream,
     segment: &PathSegment,
+    field: &TableDataField,
+    getter: &TokenStream2,
 ) -> TokenStream {
     match get_field_getter_inner_type(segment) {
-        Ok(type_ident) => get_default_renderer_for_type(props, type_ident),
+        Ok(type_ident) => get_default_renderer_for_type(
+            format_props,
+            class_prop,
+            value_prop,
+            index_prop,
+            type_ident,
+            field,
+            getter,
+        ),
         Err(err) => err.to_compile_error(),
     }
 }
 
-fn get_default_renderer_for_type(props: &TokenStream, type_ident: &Ident) -> TokenStream {
+fn get_default_render_for_inner_type(
+    format_props: &TokenStream,
+    class_prop: &TokenStream,
+    value_prop: &TokenStream2,
+    index_prop: &TokenStream,
+    type_ident: &Ident,
+) -> TokenStream {
     match type_ident.to_string().as_str() {
         "NaiveDate" | "NaiveDateTime" | "NaiveTime" => {
             let component_ident = format!("Default{type_ident}TableCellRenderer");
             let component_ident = syn::Ident::new(&component_ident, type_ident.span());
 
             quote! {
-                <#component_ident #props />
+                <#component_ident #format_props #value_prop #class_prop #index_prop/>
             }
         }
         "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16"
         | "i32" | "i64" | "i128" => quote! {
-            <DefaultNumberTableCellRenderer #props />
+            <DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop/>
         },
         _ => quote! {
-            <DefaultTableCellRenderer #props />
+            <DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop/>
         },
+    }
+}
+
+// TODO: Code duplication with get_field_getter_inner_type --> could be merged in one function
+fn get_option_inner_type(segment: &PathSegment) -> Result<&Ident, syn::Error> {
+    if let syn::PathArguments::AngleBracketed(arg) = &segment.arguments {
+        if arg.args.len() != 1 {
+            return Err(Error::new_spanned(
+                &segment.ident,
+                "`Option` should have one type argument",
+            ));
+        }
+
+        let arg = arg.args.first().expect("just checked above");
+
+        if let syn::GenericArgument::Type(Type::Path(path)) = arg {
+            Ok(&path.path.segments.last().expect("not empty").ident)
+        } else {
+            Err(Error::new_spanned(
+                &segment.ident,
+                "`Option` should have one type argument",
+            ))
+        }
+    } else {
+        Err(Error::new_spanned(
+            &segment.ident,
+            "`Option` should have one type argument",
+        ))
+    }
+}
+
+fn get_default_option_renderer(
+    format_props: &TokenStream,
+    class_prop: &TokenStream,
+    index_prop: &TokenStream,
+    type_ident: &Ident,
+    field: &TableDataField,
+    getter: &TokenStream2,
+) -> TokenStream {
+    if let Type::Path(path) = &field.ty {
+        let last_segment = path.path.segments.last().expect("not empty");
+
+        return match get_option_inner_type(last_segment) {
+            Ok(inner_type_ident) => {
+                let value_prop = quote! {
+                    value=item.#getter.expect("not None")
+                };
+
+                let none_value = field.none_value.clone().unwrap_or_default();
+
+                let inner_renderer = get_default_render_for_inner_type(
+                    format_props,
+                    class_prop,
+                    &value_prop,
+                    index_prop,
+                    inner_type_ident,
+                );
+
+                quote! {
+                    <Show when=move || { item.#getter.is_some() }
+                        fallback=move |cx: Scope| view!{cx, <DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop/>}
+                    >
+                        #inner_renderer
+                    </Show>
+                }
+            }
+            Err(err) => err.to_compile_error(),
+        };
+    }
+
+    Error::new_spanned(type_ident, "Invalid Option type").to_compile_error()
+}
+
+fn get_default_renderer_for_type(
+    format_props: &TokenStream,
+    class_prop: &TokenStream,
+    value_prop: &TokenStream,
+    index_prop: &TokenStream,
+    type_ident: &Ident,
+    field: &TableDataField,
+    getter: &TokenStream2,
+) -> TokenStream {
+    if type_ident.to_string().starts_with("Option") {
+        get_default_option_renderer(
+            format_props,
+            class_prop,
+            index_prop,
+            type_ident,
+            field,
+            getter,
+        )
+    } else {
+        get_default_render_for_inner_type(
+            format_props,
+            class_prop,
+            value_prop,
+            index_prop,
+            type_ident,
+        )
     }
 }
 
@@ -104,9 +242,7 @@ fn get_head_renderer_for_field(head_cell_renderer: &Option<IdentString>) -> Toke
     }
 }
 
-fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream2 {
-    let class = field.cell_class();
-
+fn get_format_props_for_field(field: &TableDataField) -> TokenStream2 {
     let precision = if let Some(p) = &field.format.precision {
         quote! {precision=(#p as usize)}
     } else {
@@ -168,7 +304,10 @@ fn get_selection_logic(
             quote! {
                 selected_key.update(|selected_key| { *selected_key = Some(event.key); });
             },
-            quote! {selected_key: RwSignal<Option<#key_type>>,},
+            quote! {
+                /// Generated by leptos-struct-table-macro
+                selected_key: RwSignal<Option<#key_type>>,
+            },
             quote! {create_selector(cx, selected_key)},
         ),
         SelectionMode::Multiple => unimplemented!("Multiple selection not implemented yet"),
@@ -194,7 +333,7 @@ fn get_getter(name: &syn::Ident, getter: &Option<IdentString>, ty: &Type) -> Tok
 fn get_data_provider_logic(
     ident: &syn::Ident,
     sortable: bool,
-    fields: &Vec<&TableDataField>,
+    fields: &[&TableDataField],
     column_name_enum: &syn::Ident,
 ) -> TokenStream2 {
     let column_value_enum = &format_ident!("{}ColumnValue", ident);
@@ -205,7 +344,7 @@ fn get_data_provider_logic(
     let mut column_value_cmp_arms = vec![];
     let mut column_value_get_arms = vec![];
 
-    for f in fields.into_iter() {
+    for f in fields.iter() {
         let name = f.ident.as_ref().expect("named field");
         let TableDataField {
             ref ty,
@@ -226,11 +365,15 @@ fn get_data_provider_logic(
 
         column_name_variants.push(if f.key {
             quote! {
+                /// Generated by leptos-struct-table-macro
                 #[default]
                 #column_name_variant,
             }
         } else {
-            quote! { #column_name_variant, }
+            quote! {
+                /// Generated by leptos-struct-table-macro
+                #column_name_variant,
+            }
         });
 
         if let Type::Path(path) = &ty {
@@ -240,17 +383,26 @@ fn get_data_provider_logic(
             if type_ident == "FieldGetter" {
                 match get_field_getter_inner_type(segment) {
                     Ok(type_ident) => {
-                        column_value_variants.push(quote! {#column_name_variant(#type_ident),});
+                        column_value_variants.push(quote! {
+                            /// Generated by leptos-struct-table-macro
+                            #column_name_variant(#type_ident),
+                        });
                     }
                     Err(err) => {
                         return err.to_compile_error();
                     }
                 }
             } else {
-                column_value_variants.push(quote! {#column_name_variant(#ty),});
+                column_value_variants.push(quote! {
+                    /// Generated by leptos-struct-table-macro
+                    #column_name_variant(#ty),
+                });
             }
         } else {
-            column_value_variants.push(quote! {#column_name_variant(#ty),});
+            column_value_variants.push(quote! {
+                /// Generated by leptos-struct-table-macro
+                #column_name_variant(#ty),
+            });
         }
 
         column_value_cmp_arms.push(quote! {
@@ -263,7 +415,7 @@ fn get_data_provider_logic(
     }
 
     assert!(
-        column_name_variants.len() > 0,
+        !column_name_variants.is_empty(),
         "At least one sortable field is required"
     );
 
@@ -292,11 +444,13 @@ fn get_data_provider_logic(
     };
 
     quote! {
-        #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+        /// Generated by leptos-struct-table-macro
+        #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Deserialize, Serialize)]
         pub enum #column_name_enum {
             #(#column_name_variants)*
         }
 
+        /// Generated by leptos-struct-table-macro
         #[derive(PartialEq)]
         pub enum #column_value_enum {
             #(#column_value_variants)*
@@ -309,7 +463,7 @@ fn get_data_provider_logic(
         }
 
         impl #ident {
-            fn get(&self, column: #column_name_enum) -> #column_value_enum {
+            pub fn get(&self, column: #column_name_enum) -> #column_value_enum {
                 match column {
                     #(#column_value_get_arms)*
                     _ => unreachable!()
@@ -374,22 +528,16 @@ impl ToTokens for TableComponentDeriveInput {
             })
             .unwrap_or(quote!(table));
 
-        let row_class = row_class
-            .as_ref()
-            .map(|s| s.clone())
-            .unwrap_or("".to_owned());
+        let row_class = row_class.as_ref().cloned().unwrap_or("".to_owned());
 
-        let head_row_class = head_row_class
-            .as_ref()
-            .map(|s| s.clone())
-            .unwrap_or("".to_owned());
+        let head_row_class = head_row_class.as_ref().cloned().unwrap_or("".to_owned());
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
 
         let column_name_enum = &format_ident!("{}ColumnName", ident);
 
         let data_provider_logic =
-            get_data_provider_logic(&ident, sortable, &fields, &column_name_enum);
+            get_data_provider_logic(ident, sortable, &fields, column_name_enum);
 
         let mut titles = vec![];
         let mut cells = vec![];
@@ -471,7 +619,7 @@ impl ToTokens for TableComponentDeriveInput {
         let component_ident = component_name
             .as_ref()
             .unwrap_or(&default_component_ident_name);
-        let component_ident = syn::Ident::new(&component_ident, ident.span());
+        let component_ident = syn::Ident::new(component_ident, ident.span());
 
         let classes_provider_ident = classes_provider
             .as_ref()
@@ -482,6 +630,7 @@ impl ToTokens for TableComponentDeriveInput {
 
         let default_classes_provider_def = match classes_provider {
             None => quote! {
+                /// Generated by leptos-struct-table-macro
                 #[derive(Copy, Clone)]
                 struct #classes_provider_ident;
 
@@ -508,10 +657,12 @@ impl ToTokens for TableComponentDeriveInput {
             #[component]
             pub fn #component_ident<D>(
                 cx: Scope,
+                /// Class name of the HTML tag.
                 #[prop(optional)] class: String,
+                /// Data storage provider.
                 data_provider: StoredValue<D>,
-                #[prop(optional)]
-                range: Option<RwSignal<core::ops::Range<usize>>>,
+                /// Optional range of the data to be shown.
+                #[prop(optional)] range: Option<RwSignal<core::ops::Range<usize>>>,
                 // #[prop(optional)] on_row_click: Option<FR>,
                 #selection_prop
                 // #[prop(optional)] on_head_click: Option<FH>,
