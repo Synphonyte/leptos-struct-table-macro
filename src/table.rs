@@ -132,8 +132,12 @@ fn get_props_for_field(name: &syn::Ident, field: &TableDataField) -> TokenStream
         }
         quote! {
             on_change=move |v| {
-                row_state.update_value(|s| s.#name = v);
-                data_provider.update_value(|d| d.set_row(i, row_state.get_value()));
+                local_items_state.update_untracked(move |items| {
+                    if let Some(mut value) = items.as_mut().map(|s| s.get_mut(i)).flatten() {
+                        value.#name = v;
+                        action_set_row.dispatch((i, value.clone()));
+                    }
+                });
             }
         }
     };
@@ -526,14 +530,10 @@ impl ToTokens for TableComponentDeriveInput {
                     create_signal(cx, 0..1000)
                 };
 
-                let initial_items = data_provider.with_value(|d| d.get_rows(range.get_untracked()));
-                let items = create_rw_signal(cx, initial_items);
-
                 let on_row_select = move |event: TableRowEvent<#key_type>| {
                     #selection_handler
                     // on_row_click(event);
                 };
-
 
                 let (sorting, set_sorting) = create_signal(cx, std::collections::VecDeque::<(#column_name_enum, ColumnSort)>::new());
 
@@ -558,19 +558,16 @@ impl ToTokens for TableComponentDeriveInput {
                             sorting.push_front((event.column, sort));
                         }
                     });
-
-                    items.update(move |items| { items.set_sorting(&sorting()) });
                 };
 
-                let enum_items = create_resource(cx,
-                    move || (range(), sorting(), items.get()),
-                    move |(range, _, items)| {
-                        //let rows = data_provider.with_value(|d| d.get_rows(range));
-                        async move {
-                            items.into_iter().enumerate().collect::<Vec<_>>()
-                        }
+                let action_set_row = create_action(cx, move |(idx, row): &(usize, #ident)| {
+                    let mut provider = data_provider.get_value();
+                    let row = row.clone();
+                    let idx = idx.clone();
+                    async move {
+                        provider.set_row(idx, row).await
                     }
-                );
+                });
 
                 let sort = sorting.clone();
 
@@ -581,7 +578,43 @@ impl ToTokens for TableComponentDeriveInput {
                         .unwrap_or(ColumnSort::None)
                 };
 
+                let local_items_state = create_rw_signal(cx, None::<Vec<#ident>>);
+                let fetched_items = create_local_resource(cx,
+                    move || range.get(),
+                    move |range| {
+                        let provider = data_provider.get_value();
+                        async move {
+                            let rows = match provider.get_rows(range.clone()).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    log::error!("Could not get rows: {e}");
+                                    return vec![];
+                                },
+                            };
+                            rows
+                        }
+                    }
+                );
+
+                let memo_update_local_items_state = move || {
+                    local_items_state.set(fetched_items.read(cx));
+                };
+
+                let memo_items = create_memo(cx, move |_| {
+                    let sort = sorting.get();
+                    local_items_state.with(|items| {
+                        if let Some(it) = items {
+                            let mut sorted_items = it.clone();
+                            sorted_items.set_sorting(&sort);
+                            Some(sorted_items)
+                        } else {
+                            None
+                        }
+                    })
+                });
+
                 view! { cx,
+                    { memo_update_local_items_state }
                     <#tag class=class_provider.table(&class)>
                         <#thead_renderer>
                             <#head_row_renderer class=class_provider.head_row(#head_row_class)>
@@ -593,10 +626,10 @@ impl ToTokens for TableComponentDeriveInput {
                         <Transition fallback=move || view! {cx, <tr><td colspan="4">"Loading...!"</td></tr> }>
                             { move || {
                                 let is_selected = #selector;
-
-                                enum_items.with(cx, move |items| {
-                                    let items = items.clone();
-                                    view! { cx,
+                                let items = memo_items.get();
+                                items.map(move |items| {
+                                    let items = items.into_iter().enumerate().collect::<Vec<_>>();
+                                view! { cx,
                                         <For
                                             each=move || items.clone()
                                             key=|(_, item)| item.#key_field.clone()
@@ -611,9 +644,6 @@ impl ToTokens for TableComponentDeriveInput {
                                                 let is_sel = is_selected.clone();
 
                                                 let selected_signal = Signal::derive(cx, move || is_sel(Some(item.#key_field.clone())));
-
-                                                // required to be able to get `item` into on_cell_change
-                                                let row_state = store_value(cx, item.clone());
 
                                                 view! { cx,
                                                     <#row_renderer
