@@ -401,6 +401,13 @@ impl ToTokens for TableComponentDeriveInput {
                     );
                     return;
                 }
+                if f.editable {
+                    tokens.extend(
+                        Error::new_spanned(&f.ident, "A field marked as key cannot be editable.")
+                            .to_compile_error(),
+                    );
+                    return;
+                }
                 key_field_and_type = Some((name.clone(), f.ty.clone()));
             }
 
