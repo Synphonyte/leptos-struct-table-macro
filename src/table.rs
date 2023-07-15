@@ -471,7 +471,7 @@ fn get_data_provider_logic(
             }
         }
 
-        impl TableDataSorting<#ident> for Vec<#ident> {
+        impl TableDataSorting for Vec<#ident> {
             type ColumnName = #column_name_enum;
 
             #set_sorting_impl
