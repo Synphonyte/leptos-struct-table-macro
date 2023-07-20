@@ -190,7 +190,7 @@ fn get_default_option_renderer(
                 );
 
                 quote! {
-                    <Show when=move || { item.#getter.is_some() }
+                    <Show when=move || { item_cloned.#getter.is_some() }
                         fallback=move |cx: Scope| view!{cx, <DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop/>}
                     >
                         #inner_renderer
@@ -719,6 +719,8 @@ impl ToTokens for TableComponentDeriveInput {
                                                 let is_sel = is_selected.clone();
 
                                                 let selected_signal = Signal::derive(cx, move || is_sel(Some(item.#key_field.clone())));
+
+                                                let item_cloned = item.clone();
 
                                                 view! { cx,
                                                     <#row_renderer
