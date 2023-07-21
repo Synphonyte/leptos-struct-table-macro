@@ -19,7 +19,7 @@ fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usiz
     let class = field.cell_class();
     let class_prop = quote! { class=class_provider.cell( # class) };
 
-    let value_prop = quote! { value=item.#getter };
+    let value_prop = quote! { value=item_signal.get_untracked().#getter };
 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
@@ -176,7 +176,7 @@ fn get_default_option_renderer(
         return match get_option_inner_type(last_segment) {
             Ok(inner_type_ident) => {
                 let value_prop = quote! {
-                    value=item.#getter.expect("not None")
+                    value=item_signal.get_untracked().#getter.expect("not None")
                 };
 
                 let none_value = field.none_value.clone().unwrap_or_default();
@@ -190,7 +190,7 @@ fn get_default_option_renderer(
                 );
 
                 quote! {
-                    <Show when=move || { item_cloned.#getter.is_some() }
+                    <Show when=move || { item_signal.get_untracked().#getter.is_some() }
                         fallback=move |cx: Scope| view!{cx, <DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop/>}
                     >
                         #inner_renderer
@@ -721,6 +721,8 @@ impl ToTokens for TableComponentDeriveInput {
                                                 let selected_signal = Signal::derive(cx, move || is_sel(Some(item.#key_field.clone())));
 
                                                 let item_cloned = item.clone();
+
+                                                let item_signal = Signal::derive(cx, move || item_cloned.clone() );
 
                                                 view! { cx,
                                                     <#row_renderer
