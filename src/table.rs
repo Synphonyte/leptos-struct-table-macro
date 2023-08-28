@@ -726,7 +726,7 @@ impl ToTokens for TableComponentDeriveInput {
                                 let is_selected = #selector;
 
                                 enum_items.with(move |items| {
-                                    let items = items.clone();
+                                    let items = items.clone().unwrap_or_default();
                                     view! {
                                         <For
                                             each=move || items.clone()
