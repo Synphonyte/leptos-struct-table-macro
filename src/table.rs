@@ -329,8 +329,7 @@ fn get_data_provider_logic(
         let getter = get_getter(name, getter, ty);
 
         let name_str = name.to_string();
-        let column_name_variant =
-            syn::Ident::new(&name_str.to_upper_camel_case(), name.span());
+        let column_name_variant = syn::Ident::new(&name_str.to_upper_camel_case(), name.span());
 
         column_name_variants.push(if f.key {
             quote! {
@@ -347,11 +346,9 @@ fn get_data_provider_logic(
             }
         });
 
-        column_name_display_arms.push(
-            quote! {
-                Self::#column_name_variant => #name_str,
-            }
-        );
+        column_name_display_arms.push(quote! {
+            Self::#column_name_variant => #name_str,
+        });
 
         if let Type::Path(path) = &ty {
             let segment = path.path.segments.last().expect("not empty");
