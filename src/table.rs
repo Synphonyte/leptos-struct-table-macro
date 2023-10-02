@@ -728,7 +728,7 @@ impl ToTokens for TableComponentDeriveInput {
                                         <For
                                             each=move || items.clone()
                                             key=|(_, item)| item.#key_field.clone()
-                                            view=move |(i, item)| {
+                                            children=move |(i, item)| {
                                                 let is_sel = is_selected.clone();
 
                                                 let class_signal = Signal::derive(
