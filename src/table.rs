@@ -2,10 +2,10 @@ use crate::models::{SelectionMode, TableComponentDeriveInput, TableDataField};
 use darling::export::syn::spanned::Spanned;
 use darling::util::IdentString;
 use heck::{ToTitleCase, ToUpperCamelCase};
-use proc_macro2::{TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 use syn::__private::TokenStream2;
-use syn::{Error, PathSegment, Type, Ident};
+use syn::{Error, Ident, PathSegment, Type};
 
 fn get_renderer_for_field(
     name: &Ident,
