@@ -1,6 +1,6 @@
 [package]
 name = "leptos-struct-table-macro"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 authors = ["Marc-Stefan Cassola"]
 description = "Macros for the leptos-struct-table crate."

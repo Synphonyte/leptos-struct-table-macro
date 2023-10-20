@@ -2,12 +2,18 @@ use crate::models::{SelectionMode, TableComponentDeriveInput, TableDataField};
 use darling::export::syn::spanned::Spanned;
 use darling::util::IdentString;
 use heck::{ToTitleCase, ToUpperCamelCase};
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use syn::__private::TokenStream2;
-use syn::{Error, PathSegment, Type};
+use syn::{Error, PathSegment, Type, Ident};
 
-fn get_renderer_for_field(name: &syn::Ident, field: &TableDataField, index: usize, column_name_variant: TokenStream, column_value_variant: TokenStream) -> TokenStream2 {
+fn get_renderer_for_field(
+    name: &Ident,
+    field: &TableDataField,
+    index: usize,
+    column_name_variant: TokenStream,
+    column_value_variant: TokenStream,
+) -> TokenStream2 {
     let getter = get_getter(name, &field.getter, &field.ty);
 
     let format_props = get_format_props_for_field(field);
@@ -543,8 +549,13 @@ impl ToTokens for TableComponentDeriveInput {
         let column_name_enum = &format_ident!("{}ColumnName", ident);
         let column_value_enum = &format_ident!("{}ColumnValue", ident);
 
-        let data_provider_logic =
-            get_data_provider_logic(ident, sortable, &fields, column_name_enum, column_value_enum);
+        let data_provider_logic = get_data_provider_logic(
+            ident,
+            sortable,
+            &fields,
+            column_name_enum,
+            column_value_enum,
+        );
 
         let mut titles = vec![];
         let mut cells = vec![];
@@ -603,7 +614,13 @@ impl ToTokens for TableComponentDeriveInput {
                 </#head_renderer>
             });
 
-            let cell_renderer = get_renderer_for_field(name, f, cells.len(), column_name_variant, column_value_variant);
+            let cell_renderer = get_renderer_for_field(
+                name,
+                f,
+                cells.len(),
+                column_name_variant,
+                column_value_variant,
+            );
             cells.push(cell_renderer);
         }
 
@@ -710,12 +727,12 @@ impl ToTokens for TableComponentDeriveInput {
                         }
                     });
 
-                    items.update(move |items| { items.set_sorting(&sorting()) });
+                    items.update(move |items| { items.set_sorting(&sorting()); });
                 };
 
                 let enum_items = create_resource(
-                    move || (range(), sorting(), items.get()),
-                    |(range, _, items)| async move {
+                    move || (range(), items.get()),
+                    |(range, items)| async move {
                         let rows = items.get_rows(range).await;
                         rows.into_iter().enumerate().collect::<Vec<_>>()
                     }
@@ -749,20 +766,25 @@ impl ToTokens for TableComponentDeriveInput {
                                         <For
                                             each=move || items.clone()
                                             key=|(_, item)| item.#key_field.clone()
-                                            children=move |(i, item)| {
+                                            children={move |(i, item)| {
                                                 let is_sel = is_selected.clone();
 
-                                                let class_signal = Signal::derive(
-                                                    move || class_provider.clone().row(i, is_sel(Some(item.#key_field.clone())), #row_class),
-                                                );
+                                                let class_signal = Signal::derive({
+                                                    let key = item.#key_field.clone();
+                                                    move || class_provider.clone().row(i, is_sel(Some(key.clone())), #row_class)
+                                                });
 
                                                 let is_sel = is_selected.clone();
 
-                                                let selected_signal = Signal::derive(move || is_sel(Some(item.#key_field.clone())));
+                                                let selected_signal = Signal::derive({
+                                                    let key = item.#key_field.clone();
+                                                    move || is_sel(Some(key.clone()))
+                                                });
 
-                                                let item_cloned = item.clone();
-
-                                                let item_signal = Signal::derive(move || item_cloned.clone() );
+                                                let item_signal = Signal::derive({
+                                                    let item = item.clone();
+                                                    move || item.clone()
+                                                });
 
                                                 view! {
                                                     <#row_renderer
@@ -775,7 +797,7 @@ impl ToTokens for TableComponentDeriveInput {
                                                         #(#cells)*
                                                     </#row_renderer>
                                                 }
-                                            }
+                                            }}
                                         />
                                     }
                                 })
