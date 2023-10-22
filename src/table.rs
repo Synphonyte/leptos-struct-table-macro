@@ -482,8 +482,12 @@ fn get_data_provider_logic(
         impl TableDataProvider<#ident> for Vec<#ident> {
             type ColumnName = #column_name_enum;
 
-            async fn get_rows(&self, range: std::ops::Range<usize> ) -> Vec<#ident> {
+            async fn get_rows(&self, range: std::ops::Range<usize> ) -> (Vec<#ident>, std::ops::Range<usize>) {
                 leptos_struct_table::get_vec_range_clamped(self, range)
+            }
+
+            async fn row_count(&self) -> Option<usize> {
+                Some(self.len())
             }
 
             #set_sorting_impl
