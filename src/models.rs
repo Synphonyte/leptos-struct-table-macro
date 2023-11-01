@@ -11,6 +11,7 @@ use darling::{FromDeriveInput, FromField, FromMeta};
 pub(crate) struct TableComponentDeriveInput {
     pub(crate) ident: syn::Ident,
     pub(crate) data: ast::Data<util::Ignored, TableDataField>,
+    pub(crate) generics: syn::Generics,
 
     #[darling(default)]
     pub(crate) component_name: Option<String>,
