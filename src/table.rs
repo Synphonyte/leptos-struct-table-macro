@@ -341,7 +341,7 @@ fn get_data_provider_logic(
             ..
         } = **f;
 
-        if (skip_sort || skip) && !f.key {
+        if (skip) && !f.key {
             continue;
         }
 
@@ -398,13 +398,15 @@ fn get_data_provider_logic(
             });
         }
 
-        column_value_cmp_arms.push(quote! {
-            (#column_value_enum::#column_name_variant(a), #column_value_enum::#column_name_variant(b)) => a.partial_cmp(b),
-        });
+        if !skip_sort {
+            column_value_cmp_arms.push(quote! {
+                (#column_value_enum::#column_name_variant(a), #column_value_enum::#column_name_variant(b)) => a.partial_cmp(b),
+            });
 
-        column_value_get_arms.push(quote! {
-            #column_name_enum::#column_name_variant => #column_value_enum::#column_name_variant(self.#getter),
-        });
+            column_value_get_arms.push(quote! {
+                #column_name_enum::#column_name_variant => #column_value_enum::#column_name_variant(self.#getter),
+            });
+        }
     }
 
     assert!(
@@ -614,6 +616,12 @@ impl ToTokens for TableComponentDeriveInput {
             let column_value_variant = quote! { #column_value_enum::#column_name_variant };
             let column_name_variant = quote! { #column_name_enum::#column_name_variant };
 
+            let on_click_handling = if sortable && !f.skip_sort {
+                quote! { on_click=on_head_click.clone() }
+            } else {
+                quote! { on_click=|_| () }
+            };
+
             titles.push(quote! {
                 <#head_renderer
                     class=Signal::derive(move || class_provider.clone().head_cell(column_sort.clone()(#column_name_variant), #head_class))
@@ -627,7 +635,7 @@ impl ToTokens for TableComponentDeriveInput {
                         sorting().iter().position(|(field, _)| *field == #column_name_variant)
                     })
                     sort_direction=Signal::derive(move || column_sort.clone()(#column_name_variant))
-                    on_click=on_head_click.clone()
+                    #on_click_handling
                 >
                     #title
                 </#head_renderer>
