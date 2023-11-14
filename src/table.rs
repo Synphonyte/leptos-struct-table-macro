@@ -599,7 +599,9 @@ impl ToTokens for TableComponentDeriveInput {
                 continue;
             }
 
-            let title = if let Some(ref t) = f.title {
+            let title = if f.skip_header {
+                "".to_string()
+            } else if let Some(ref t) = f.title {
                 t.clone()
             } else {
                 name.to_string().to_title_case()
@@ -829,6 +831,7 @@ impl ToTokens for TableComponentDeriveInput {
                                                         index=i
                                                         selected=selected_signal
                                                         on_click=on_row_select
+                                                        row_value=item_signal
                                                     >
                                                         #(#cells)*
                                                     </#row_renderer>

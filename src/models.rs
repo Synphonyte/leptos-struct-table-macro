@@ -86,6 +86,9 @@ pub(crate) struct TableDataField {
     pub(crate) skip: bool,
 
     #[darling(default)]
+    pub(crate) skip_header: bool,
+
+    #[darling(default)]
     pub(crate) key: bool,
 
     #[darling(default)]
