@@ -20,6 +20,9 @@ pub(crate) struct TableComponentDeriveInput {
     pub(crate) classes_provider: Option<IdentString>,
 
     #[darling(default)]
+    pub(crate) table_data_provider: Option<IdentString>,
+
+    #[darling(default)]
     pub(crate) tag: Option<IdentString>,
 
     #[darling(default)]
