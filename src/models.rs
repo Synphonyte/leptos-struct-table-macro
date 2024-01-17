@@ -8,28 +8,16 @@ use darling::{FromDeriveInput, FromField, FromMeta};
     supports(struct_named),
     forward_attrs(allow, doc, cfg)
 )]
-pub(crate) struct TableComponentDeriveInput {
+pub(crate) struct TableRowDeriveInput {
     pub(crate) ident: syn::Ident,
     pub(crate) data: ast::Data<util::Ignored, TableDataField>,
     pub(crate) generics: syn::Generics,
 
     #[darling(default)]
-    pub(crate) component_name: Option<String>,
-
-    #[darling(default)]
     pub(crate) classes_provider: Option<IdentString>,
 
     #[darling(default)]
-    pub(crate) tag: Option<IdentString>,
-
-    #[darling(default)]
     pub(crate) head_row_renderer: Option<IdentString>,
-
-    #[darling(default)]
-    pub(crate) row_renderer: Option<IdentString>,
-
-    #[darling(default)]
-    pub(crate) row_class: Option<String>,
 
     #[darling(default)]
     pub(crate) head_row_class: Option<String>,
@@ -39,9 +27,6 @@ pub(crate) struct TableComponentDeriveInput {
 
     #[darling(default)]
     pub(crate) thead_renderer: Option<IdentString>,
-
-    #[darling(default)]
-    pub(crate) tbody_renderer: Option<IdentString>,
 
     #[darling(default)]
     pub(crate) selection_mode: SelectionMode,
