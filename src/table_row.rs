@@ -366,28 +366,13 @@ impl ToTokens for TableRowDeriveInput {
             ref ident,
             ref data,
             ref generics,
-            ref head_row_renderer,
-            ref head_row_class,
             ref head_cell_renderer,
-            ref thead_renderer,
             ref selection_mode,
             ref classes_provider,
             sortable,
         } = *self;
 
         let mut key_field_and_type = None;
-
-        let head_row_renderer = head_row_renderer
-            .as_ref()
-            .map(|r| r.as_ident().clone())
-            .unwrap_or_else(|| syn::Ident::new("tr", head_row_renderer.span()));
-
-        let thead_renderer = thead_renderer
-            .as_ref()
-            .map(|r| r.as_ident().clone())
-            .unwrap_or_else(|| syn::Ident::new("thead", thead_renderer.span()));
-
-        let head_row_class = head_row_class.as_ref().cloned().unwrap_or("".to_owned());
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
 
@@ -432,8 +417,8 @@ impl ToTokens for TableRowDeriveInput {
 
             titles.push(quote! {
                 <#head_renderer
-                    class=Signal::derive(move || class_provider.clone().head_cell(get_sorting_for_column(#index, sorting), #head_class))
-                    inner_class=class_provider.clone().head_cell_inner()
+                    class=Signal::derive(move || class_provider.thead_cell(get_sorting_for_column(#index, sorting), #head_class))
+                    inner_class=class_provider.thead_cell_inner()
                     index=#index
                     sort_priority=Signal::derive(move || {
                         if sorting.get().len() < 2 {
@@ -512,11 +497,7 @@ impl ToTokens for TableRowDeriveInput {
                     let class_provider = Self::ClassesProvider::new();
 
                     view! {
-                        <#thead_renderer>
-                            <#head_row_renderer class=class_provider.head_row(#head_row_class)>
-                                #(#titles)*
-                            </#head_row_renderer>
-                        </#thead_renderer>
+                        #(#titles)*
                     }
                 }
             }

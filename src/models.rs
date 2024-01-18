@@ -17,16 +17,7 @@ pub(crate) struct TableRowDeriveInput {
     pub(crate) classes_provider: Option<IdentString>,
 
     #[darling(default)]
-    pub(crate) head_row_renderer: Option<IdentString>,
-
-    #[darling(default)]
-    pub(crate) head_row_class: Option<String>,
-
-    #[darling(default)]
     pub(crate) head_cell_renderer: Option<IdentString>,
-
-    #[darling(default)]
-    pub(crate) thead_renderer: Option<IdentString>,
 
     #[darling(default)]
     pub(crate) selection_mode: SelectionMode,
