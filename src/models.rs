@@ -24,6 +24,9 @@ pub(crate) struct TableRowDeriveInput {
 
     #[darling(default)]
     pub(crate) sortable: bool,
+
+    #[darling(default)]
+    pub(crate) impl_vec_data_provider: bool,
 }
 
 #[derive(Debug, FromMeta, Default, Copy, Clone)]

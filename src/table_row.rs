@@ -370,6 +370,7 @@ impl ToTokens for TableRowDeriveInput {
             ref selection_mode,
             ref classes_provider,
             sortable,
+            impl_vec_data_provider,
         } = *self;
 
         let mut key_field_and_type = None;
@@ -448,7 +449,11 @@ impl ToTokens for TableRowDeriveInput {
 
         let (key_field, key_type) = key_field_and_type.unwrap();
 
-        let data_provider_logic = get_data_provider_logic(ident, generics, sortable, &fields);
+        let data_provider_logic = if impl_vec_data_provider {
+            get_data_provider_logic(ident, generics, sortable, &fields)
+        } else {
+            quote! {}
+        };
 
         let generic_params = &generics.params;
         let where_predicates = generics.where_clause.as_ref().map(|w| w.predicates.clone());
@@ -468,13 +473,13 @@ impl ToTokens for TableRowDeriveInput {
         tokens.extend(quote! {
             #data_provider_logic
 
-            impl #generic_params_wb RowRenderer<#key_type> for #ident #generic_params_wb
+            impl #generic_params_wb RowRenderer for #ident #generic_params_wb
             #where_predicates
             {
                 type ClassesProvider = #classes_provider_ident;
 
-                fn key(&self) -> #key_type {
-                    self.#key_field.clone()
+                fn key(&self) -> String {
+                    self.#key_field.to_string()
                 }
 
                 fn render_row(&self) -> impl IntoView
