@@ -187,19 +187,24 @@ fn get_renderer_for_field(name: &Ident, field: &TableDataField, index: usize) ->
 
     let value_prop = quote! { value=row.#getter };
 
-    let on_change_prop = quote! { on_change=move |new_value| {
-        on_change.with_value(|on_change| {
-            let mut changed_row = row.clone();
-            changed_row.#getter = new_value;
+    let on_change_prop = if is_getter(&field) {
+        quote! {on_change=|_| {}}
+    } else {
+        quote! { on_change={
+            let on_change = on_change.clone();
+            move |new_value| {
+                let mut changed_row = row.clone();
+                changed_row.#name = new_value;
 
-            let event = TableChangeEvent {
-                row_index: i,
-                col_index: #index,
-                changed_row,
-            };
-            on_change.call(event);
-        });
-    } };
+                let event = TableChangeEvent {
+                    row_index: index,
+                    col_index: #index,
+                    changed_row,
+                };
+                on_change.run(event);
+            }
+        }}
+    };
 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
@@ -247,7 +252,22 @@ fn get_head_renderer_for_field(head_cell_renderer: &Option<IdentString>) -> Toke
     }
 }
 
-fn get_getter(name: &syn::Ident, getter: &Option<IdentString>, ty: &Type) -> TokenStream2 {
+fn is_getter(field: &TableDataField) -> bool {
+    if field.getter.is_some() {
+        return true;
+    }
+
+    if let Type::Path(path) = &field.ty {
+        let type_ident = &path.path.segments.last().expect("not empty").ident;
+        if type_ident.to_string().as_str() == "FieldGetter" {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn get_getter(name: &Ident, getter: &Option<IdentString>, ty: &Type) -> TokenStream2 {
     match getter {
         Some(getter) => quote! { #getter() },
         None => {
@@ -264,7 +284,7 @@ fn get_getter(name: &syn::Ident, getter: &Option<IdentString>, ty: &Type) -> Tok
 }
 
 fn get_data_provider_logic(
-    ident: &syn::Ident,
+    ident: &Ident,
     generics: &syn::Generics,
     sortable: bool,
     fields: &[&TableDataField],
@@ -283,7 +303,7 @@ fn get_data_provider_logic(
             ..
         } = **f;
 
-        if (skip) && !f.key {
+        if skip {
             continue;
         }
 
@@ -367,13 +387,10 @@ impl ToTokens for TableRowDeriveInput {
             ref data,
             ref generics,
             ref head_cell_renderer,
-            ref selection_mode,
             ref classes_provider,
             sortable,
             impl_vec_data_provider,
         } = *self;
-
-        let mut key_field_and_type = None;
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
 
@@ -382,17 +399,6 @@ impl ToTokens for TableRowDeriveInput {
 
         for f in &fields {
             let name = f.ident.as_ref().expect("named field");
-
-            if f.key {
-                if key_field_and_type.is_some() {
-                    tokens.extend(
-                        Error::new_spanned(&f.ident, "Only one field can be marked as key")
-                            .to_compile_error(),
-                    );
-                    return;
-                }
-                key_field_and_type = Some((name.clone(), f.ty.clone()));
-            }
 
             if f.skip {
                 continue;
@@ -438,17 +444,6 @@ impl ToTokens for TableRowDeriveInput {
             cells.push(cell_renderer);
         }
 
-        if key_field_and_type.is_none() {
-            // TODO : how to get the span of the fields?
-            tokens.extend(
-                Error::new_spanned(ident, "One field must be marked as #[table(key)]")
-                    .to_compile_error(),
-            );
-            return;
-        }
-
-        let (key_field, key_type) = key_field_and_type.unwrap();
-
         let data_provider_logic = if impl_vec_data_provider {
             get_data_provider_logic(ident, generics, sortable, &fields)
         } else {
@@ -467,8 +462,9 @@ impl ToTokens for TableRowDeriveInput {
             .as_ref()
             .map(|id| id.to_string())
             .unwrap_or("DummyTableClassesProvider".to_string());
-        let classes_provider_ident =
-            syn::Ident::new(&classes_provider_ident, classes_provider.span());
+        let classes_provider_ident = Ident::new(&classes_provider_ident, classes_provider.span());
+
+        let column_count = cells.len();
 
         tokens.extend(quote! {
             #data_provider_logic
@@ -478,12 +474,9 @@ impl ToTokens for TableRowDeriveInput {
             {
                 type ClassesProvider = #classes_provider_ident;
 
-                fn key(&self) -> String {
-                    self.#key_field.to_string()
-                }
+                const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(&self) -> impl IntoView
-                {
+                fn render_row(&self, index: usize, on_change: ChangeEventHandler<Self>) -> impl IntoView {
                     let class_provider = Self::ClassesProvider::new();
                     let row = self.clone();
 

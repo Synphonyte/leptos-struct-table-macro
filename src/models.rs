@@ -20,21 +20,10 @@ pub(crate) struct TableRowDeriveInput {
     pub(crate) head_cell_renderer: Option<IdentString>,
 
     #[darling(default)]
-    pub(crate) selection_mode: SelectionMode,
-
-    #[darling(default)]
     pub(crate) sortable: bool,
 
     #[darling(default)]
     pub(crate) impl_vec_data_provider: bool,
-}
-
-#[derive(Debug, FromMeta, Default, Copy, Clone)]
-pub(crate) enum SelectionMode {
-    #[default]
-    None,
-    Single,
-    Multiple,
 }
 
 #[derive(Debug, FromField)]
@@ -63,9 +52,6 @@ pub(crate) struct TableDataField {
 
     #[darling(default)]
     pub(crate) skip: bool,
-
-    #[darling(default)]
-    pub(crate) key: bool,
 
     #[darling(default)]
     pub(crate) skip_sort: bool,
