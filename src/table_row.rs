@@ -404,7 +404,9 @@ impl ToTokens for TableRowDeriveInput {
                 continue;
             }
 
-            let title = if let Some(ref t) = f.title {
+            let title = if f.skip_header {
+                "".to_string()
+            } else if let Some(ref t) = f.title {
                 t.clone()
             } else {
                 name.to_string().to_title_case()
