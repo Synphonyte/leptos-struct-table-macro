@@ -1,11 +1,11 @@
-use crate::models::{TableDataField, TableRowDeriveInput};
+use crate::models::{TableRowDeriveInput, TableRowField};
 use darling::util::IdentString;
 use heck::ToTitleCase;
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 use syn::__private::TokenStream2;
 use syn::spanned::Spanned;
-use syn::{Error, PathSegment, Type};
+use syn::{Error, PathSegment, Type, WhereClause};
 
 fn get_default_renderer_for_field_getter(
     format_props: &TokenStream,
@@ -13,7 +13,7 @@ fn get_default_renderer_for_field_getter(
     value_prop: &TokenStream,
     index_prop: &TokenStream,
     segment: &PathSegment,
-    field: &TableDataField,
+    field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
     match get_inner_type(segment, "FieldGetter") {
@@ -85,7 +85,7 @@ fn get_default_option_renderer(
     class_prop: &TokenStream,
     index_prop: &TokenStream,
     type_ident: &Ident,
-    field: &TableDataField,
+    field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
     if let Type::Path(path) = &field.ty {
@@ -131,7 +131,7 @@ fn get_default_renderer_for_type(
     value_prop: &TokenStream,
     index_prop: &TokenStream,
     type_ident: &Ident,
-    field: &TableDataField,
+    field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
     if type_ident.to_string().starts_with("Option") {
@@ -154,7 +154,7 @@ fn get_default_renderer_for_type(
     }
 }
 
-fn get_format_props_for_field(field: &TableDataField) -> TokenStream2 {
+fn get_format_props_for_field(field: &TableRowField) -> TokenStream2 {
     let precision = if let Some(p) = &field.format.precision {
         quote! {precision=(#p as usize)}
     } else {
@@ -173,7 +173,7 @@ fn get_format_props_for_field(field: &TableDataField) -> TokenStream2 {
     }
 }
 
-fn get_renderer_for_field(name: &Ident, field: &TableDataField, index: usize) -> TokenStream2 {
+fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> TokenStream2 {
     let getter = get_getter(name, &field.getter, &field.ty);
 
     let format_props = get_format_props_for_field(field);
@@ -252,7 +252,7 @@ fn get_head_renderer_for_field(head_cell_renderer: &Option<IdentString>) -> Toke
     }
 }
 
-fn is_getter(field: &TableDataField) -> bool {
+fn is_getter(field: &TableRowField) -> bool {
     if field.getter.is_some() {
         return true;
     }
@@ -284,10 +284,11 @@ fn get_getter(name: &Ident, getter: &Option<IdentString>, ty: &Type) -> TokenStr
 }
 
 fn get_data_provider_logic(
-    ident: &Ident,
-    generics: &syn::Generics,
+    ident: &TokenStream,
+    generic_params: &TokenStream,
+    where_clause: &Option<WhereClause>,
     sortable: bool,
-    fields: &[&TableDataField],
+    fields: &[&TableRowField],
 ) -> TokenStream2 {
     let mut column_name_display_arms = vec![];
 
@@ -295,7 +296,7 @@ fn get_data_provider_logic(
 
     for (col_index, f) in fields.iter().enumerate() {
         let name = f.ident.as_ref().expect("named field");
-        let TableDataField {
+        let TableRowField {
             ref ty,
             skip_sort,
             skip,
@@ -354,20 +355,12 @@ fn get_data_provider_logic(
         quote! {}
     };
 
-    let generic_params = if generics.params.is_empty() {
-        quote! {}
-    } else {
-        let params = &generics.params;
-        quote! {<#params>}
-    };
-    let where_clause = &generics.where_clause;
-
     quote! {
         #[async_trait(?Send)]
-        impl #generic_params TableDataProvider<#ident #generic_params> for Vec<#ident #generic_params>
+        impl #generic_params TableDataProvider<#ident> for Vec<#ident>
         #where_clause
         {
-            async fn get_rows(&self, range: std::ops::Range<usize> ) -> Result<(Vec<#ident #generic_params>, std::ops::Range<usize>), String> {
+            async fn get_rows(&self, range: std::ops::Range<usize> ) -> Result<(Vec<#ident>, std::ops::Range<usize>), String> {
                 Ok(leptos_struct_table::get_vec_range_clamped(self, range))
             }
 
@@ -390,9 +383,23 @@ impl ToTokens for TableRowDeriveInput {
             ref classes_provider,
             sortable,
             impl_vec_data_provider,
+            ref row_type,
         } = *self;
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
+
+        let generic_params = &generics.params;
+        let where_clause = &generics.where_clause;
+        let generic_params_wb = if generic_params.is_empty() {
+            quote! {}
+        } else {
+            quote! {<#generic_params>}
+        };
+
+        let ident = row_type.as_ref().map_or(
+            quote! { #ident #generic_params_wb },
+            |row_type| quote! { #row_type },
+        );
 
         let mut titles = vec![];
         let mut cells = vec![];
@@ -447,17 +454,9 @@ impl ToTokens for TableRowDeriveInput {
         }
 
         let data_provider_logic = if impl_vec_data_provider {
-            get_data_provider_logic(ident, generics, sortable, &fields)
+            get_data_provider_logic(&ident, &generic_params_wb, where_clause, sortable, &fields)
         } else {
             quote! {}
-        };
-
-        let generic_params = &generics.params;
-        let where_predicates = generics.where_clause.as_ref().map(|w| w.predicates.clone());
-        let generic_params_wb = if generic_params.is_empty() {
-            quote! {}
-        } else {
-            quote! {<#generic_params>}
         };
 
         let classes_provider_ident = classes_provider
@@ -471,8 +470,8 @@ impl ToTokens for TableRowDeriveInput {
         tokens.extend(quote! {
             #data_provider_logic
 
-            impl #generic_params_wb RowRenderer for #ident #generic_params_wb
-            #where_predicates
+            impl #generic_params_wb RowRenderer for #ident
+            #where_clause
             {
                 type ClassesProvider = #classes_provider_ident;
 

@@ -10,7 +10,7 @@ use darling::{FromDeriveInput, FromField, FromMeta};
 )]
 pub(crate) struct TableRowDeriveInput {
     pub(crate) ident: syn::Ident,
-    pub(crate) data: ast::Data<util::Ignored, TableDataField>,
+    pub(crate) data: ast::Data<util::Ignored, TableRowField>,
     pub(crate) generics: syn::Generics,
 
     #[darling(default)]
@@ -24,11 +24,14 @@ pub(crate) struct TableRowDeriveInput {
 
     #[darling(default)]
     pub(crate) impl_vec_data_provider: bool,
+
+    #[darling(default)]
+    pub(crate) row_type: Option<syn::Type>,
 }
 
 #[derive(Debug, FromField)]
 #[darling(attributes(table))]
-pub(crate) struct TableDataField {
+pub(crate) struct TableRowField {
     pub(crate) ident: Option<syn::Ident>,
     pub(crate) ty: syn::Type,
 
@@ -66,7 +69,7 @@ pub(crate) struct TableDataField {
     pub(crate) none_value: Option<String>,
 }
 
-impl TableDataField {
+impl TableRowField {
     pub(crate) fn cell_class(&self) -> String {
         let mut class = "".to_owned();
 
