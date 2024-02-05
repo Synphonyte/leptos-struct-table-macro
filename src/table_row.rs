@@ -4,7 +4,6 @@ use heck::ToTitleCase;
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 use syn::__private::TokenStream2;
-use syn::spanned::Spanned;
 use syn::{Error, PathSegment, Type, WhereClause};
 
 fn get_default_renderer_for_field_getter(
@@ -51,7 +50,7 @@ fn get_default_render_for_inner_type(
             <DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
         },
         _ => quote! {
-            <DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
+            <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
         },
     }
 }
@@ -248,7 +247,7 @@ fn get_head_renderer_for_field(head_cell_renderer: &Option<IdentString>) -> Toke
         let ident = renderer.as_ident();
         quote! {#ident}
     } else {
-        quote! {DefaultTableHeaderRenderer}
+        quote! {leptos_struct_table::DefaultTableHeaderRenderer}
     }
 }
 
@@ -356,7 +355,7 @@ fn get_data_provider_logic(
     };
 
     quote! {
-        #[async_trait(?Send)]
+        #[async_trait::async_trait(?Send)]
         impl #generic_params TableDataProvider<#ident> for Vec<#ident>
         #where_clause
         {
@@ -433,16 +432,18 @@ impl ToTokens for TableRowDeriveInput {
 
             titles.push(quote! {
                 <#head_renderer
-                    class=Signal::derive(move || class_provider.thead_cell(get_sorting_for_column(#index, sorting), #head_class))
+                    class=leptos::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#index, sorting), #head_class))
                     inner_class=class_provider.thead_cell_inner()
                     index=#index
-                    sort_priority=Signal::derive(move || {
+                    sort_priority=leptos::Signal::derive(move || {
+                        use leptos::SignalGet;
+
                         if sorting.get().len() < 2 {
                             return None;
                         }
                         sorting.get().iter().position(|(index, _)| *index == #index)
                     })
-                    sort_direction=Signal::derive(move || get_sorting_for_column(#index, sorting))
+                    sort_direction=leptos::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#index, sorting))
                     #on_click_handling
                 >
                     #title
@@ -461,41 +462,44 @@ impl ToTokens for TableRowDeriveInput {
 
         let classes_provider_ident = classes_provider
             .as_ref()
-            .map(|id| id.to_string())
-            .unwrap_or("DummyTableClassesProvider".to_string());
-        let classes_provider_ident = Ident::new(&classes_provider_ident, classes_provider.span());
+            .map(|id| quote! { #id })
+            .unwrap_or(quote! { leptos_struct_table::DummyTableClassesProvider });
 
         let column_count = cells.len();
 
         tokens.extend(quote! {
             #data_provider_logic
 
-            impl #generic_params_wb RowRenderer for #ident
+            impl #generic_params_wb leptos_struct_table::RowRenderer for #ident
             #where_clause
             {
                 type ClassesProvider = #classes_provider_ident;
 
                 const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(&self, index: usize, on_change: ChangeEventHandler<Self>) -> impl IntoView {
+                fn render_row(&self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl IntoView {
+                    use leptos_struct_table::TableClassesProvider;
+
                     let class_provider = Self::ClassesProvider::new();
                     let row = self.clone();
 
-                    view! {
+                    leptos::view! {
                         #(#cells)*
                     }
                 }
 
                 fn render_head_row<F>(
-                    sorting: Signal<std::collections::VecDeque<(usize, ColumnSort)>>,
+                    sorting: leptos::Signal<std::collections::VecDeque<(usize, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
                 ) -> impl IntoView
                 where
-                    F: Fn(TableHeadEvent) + Clone + 'static,
+                    F: Fn(leptos_struct_table::TableHeadEvent) + Clone + 'static,
                 {
+                    use leptos_struct_table::TableClassesProvider;
+
                     let class_provider = Self::ClassesProvider::new();
 
-                    view! {
+                    leptos::view! {
                         #(#titles)*
                     }
                 }
