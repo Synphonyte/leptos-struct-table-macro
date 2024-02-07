@@ -191,11 +191,13 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
     } else {
         quote! { on_change={
             let on_change = on_change.clone();
+            let row = self.clone();
+
             move |new_value| {
                 let mut changed_row = row.clone();
                 changed_row.#name = new_value;
 
-                let event = TableChangeEvent {
+                let event = leptos_struct_table::ChangeEvent {
                     row_index: index,
                     col_index: #index,
                     changed_row,
