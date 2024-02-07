@@ -93,7 +93,7 @@ fn get_default_option_renderer(
         return match get_inner_type(last_segment, "Option") {
             Ok(inner_type_ident) => {
                 let value_prop = quote! {
-                    value=row.#getter.expect("not None")
+                    value=value.clone().expect("not None")
                 };
 
                 let none_value = field.none_value.clone().unwrap_or_default();
@@ -107,14 +107,20 @@ fn get_default_option_renderer(
                 );
 
                 quote! {
-                    <Show when={
+                    {
                         let value = row.#getter;
-                        move || { value.is_some() }
+                        view! {
+                            <Show
+                                when={
+                                    let value = value.clone();
+                                    move || value.is_some()
+                                }
+                                fallback=move || view!{<DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop on_change=|_| {}/>}
+                            >
+                                #inner_renderer
+                            </Show>
+                        }
                     }
-                        fallback=move || view!{<DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop on_change=|_| {}/>}
-                    >
-                        #inner_renderer
-                    </Show>
                 }
             }
             Err(err) => err.to_compile_error(),
@@ -472,7 +478,7 @@ impl ToTokens for TableRowDeriveInput {
         tokens.extend(quote! {
             #data_provider_logic
 
-            impl #generic_params_wb leptos_struct_table::RowRenderer for #ident
+            impl #generic_params_wb leptos_struct_table::TableRow for #ident
             #where_clause
             {
                 type ClassesProvider = #classes_provider_ident;
