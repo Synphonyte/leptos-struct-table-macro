@@ -17,7 +17,7 @@ pub(crate) struct TableRowDeriveInput {
     pub(crate) classes_provider: Option<IdentString>,
 
     #[darling(default)]
-    pub(crate) head_cell_renderer: Option<IdentString>,
+    pub(crate) thead_cell_renderer: Option<IdentString>,
 
     #[darling(default)]
     pub(crate) sortable: bool,

@@ -250,12 +250,12 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
     }
 }
 
-fn get_head_renderer_for_field(head_cell_renderer: &Option<IdentString>) -> TokenStream2 {
-    if let Some(renderer) = &head_cell_renderer {
+fn get_thead_cell_renderer_for_field(thead_cell_renderer: &Option<IdentString>) -> TokenStream2 {
+    if let Some(renderer) = &thead_cell_renderer {
         let ident = renderer.as_ident();
         quote! {#ident}
     } else {
-        quote! {leptos_struct_table::DefaultTableHeaderRenderer}
+        quote! {leptos_struct_table::DefaultTableHeaderCellRenderer}
     }
 }
 
@@ -386,7 +386,7 @@ impl ToTokens for TableRowDeriveInput {
             ref ident,
             ref data,
             ref generics,
-            ref head_cell_renderer,
+            ref thead_cell_renderer,
             ref classes_provider,
             sortable,
             impl_vec_data_provider,
@@ -428,7 +428,7 @@ impl ToTokens for TableRowDeriveInput {
 
             let head_class = f.head_class();
 
-            let head_renderer = get_head_renderer_for_field(head_cell_renderer);
+            let thead_cell_renderer = get_thead_cell_renderer_for_field(thead_cell_renderer);
 
             let index = titles.len();
 
@@ -439,7 +439,7 @@ impl ToTokens for TableRowDeriveInput {
             };
 
             titles.push(quote! {
-                <#head_renderer
+                <#thead_cell_renderer
                     class=leptos::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#index, sorting), #head_class))
                     inner_class=class_provider.thead_cell_inner()
                     index=#index
@@ -455,7 +455,7 @@ impl ToTokens for TableRowDeriveInput {
                     #on_click_handling
                 >
                     #title
-                </#head_renderer>
+                </#thead_cell_renderer>
             });
 
             let cell_renderer = get_renderer_for_field(name, f, cells.len());
