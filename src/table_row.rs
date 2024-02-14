@@ -301,7 +301,9 @@ fn get_data_provider_logic(
 
     let mut column_value_cmp_arms = vec![];
 
-    for (col_index, f) in fields.iter().enumerate() {
+    let mut col_index = 0_usize;
+
+    for f in fields.iter() {
         let name = f.ident.as_ref().expect("named field");
         let TableRowField {
             ref ty,
@@ -329,12 +331,14 @@ fn get_data_provider_logic(
                 #col_index => a.#getter.partial_cmp(&b.#getter),
             });
         }
+
+        col_index += 1;
     }
 
     let cmp_fn = quote! {
         |a: &#ident, b: &#ident, col_index: usize| match col_index {
             #(#column_value_cmp_arms)*
-            _ => unreachable!()
+            _ => unreachable!("col_index: {col_index}")
         }
     };
 
