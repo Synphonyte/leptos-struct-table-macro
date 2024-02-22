@@ -367,7 +367,6 @@ fn get_data_provider_logic(
     };
 
     quote! {
-        #[async_trait::async_trait(?Send)]
         impl #generic_params TableDataProvider<#ident> for Vec<#ident>
         #where_clause
         {
@@ -414,9 +413,11 @@ impl ToTokens for TableRowDeriveInput {
 
         let mut titles = vec![];
         let mut cells = vec![];
+        let mut col_name_match_arms = vec![];
 
         for f in &fields {
             let name = f.ident.as_ref().expect("named field");
+            let name_str = name.to_string();
 
             if f.skip {
                 continue;
@@ -427,7 +428,7 @@ impl ToTokens for TableRowDeriveInput {
             } else if let Some(ref t) = f.title {
                 t.clone()
             } else {
-                name.to_string().to_title_case()
+                name_str.to_title_case()
             };
 
             let head_class = f.head_class();
@@ -441,6 +442,8 @@ impl ToTokens for TableRowDeriveInput {
             } else {
                 quote! { on_click=|_| () }
             };
+
+            col_name_match_arms.push(quote! {#index => #name_str,});
 
             titles.push(quote! {
                 <#thead_cell_renderer
@@ -513,6 +516,13 @@ impl ToTokens for TableRowDeriveInput {
 
                     leptos::view! {
                         #(#titles)*
+                    }
+                }
+
+                fn col_name(col_index: usize) -> &'static str {
+                    match col_index {
+                        #(#col_name_match_arms)*
+                        _ => unreachable!("Column index {} out of bounds", col_index),
                     }
                 }
             }
