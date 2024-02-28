@@ -47,7 +47,7 @@ fn get_default_render_for_inner_type(
         }
         "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16"
         | "i32" | "i64" | "i128" => quote! {
-            <DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
+            <leptos_struct_table::DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
         },
         _ => quote! {
             <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
@@ -109,16 +109,16 @@ fn get_default_option_renderer(
                 quote! {
                     {
                         let value = row.#getter;
-                        view! {
-                            <Show
+                        leptos::view! {
+                            <leptos::Show
                                 when={
                                     let value = value.clone();
                                     move || value.is_some()
                                 }
-                                fallback=move || view!{<DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop on_change=|_| {}/>}
+                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop on_change=|_| {}/>}
                             >
                                 #inner_renderer
-                            </Show>
+                            </leptos::Show>
                         }
                     }
                 }
@@ -245,7 +245,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
         }
     } else {
         quote! {
-            <DefaultTableCellRenderer #format_props #value_prop #class_prop on_change=|_| {} />
+            <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop on_change=|_| {} />
         }
     }
 }
@@ -492,7 +492,7 @@ impl ToTokens for TableRowDeriveInput {
 
                 const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(&self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl IntoView {
+                fn render_row(&self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl leptos::IntoView {
                     use leptos_struct_table::TableClassesProvider;
 
                     let class_provider = Self::ClassesProvider::new();
@@ -506,7 +506,7 @@ impl ToTokens for TableRowDeriveInput {
                 fn render_head_row<F>(
                     sorting: leptos::Signal<std::collections::VecDeque<(usize, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
-                ) -> impl IntoView
+                ) -> impl leptos::IntoView
                 where
                     F: Fn(leptos_struct_table::TableHeadEvent) + Clone + 'static,
                 {
