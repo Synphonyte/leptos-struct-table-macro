@@ -37,20 +37,8 @@ fn get_default_render_for_inner_type(
     type_ident: &Ident,
 ) -> TokenStream {
     match type_ident.to_string().as_str() {
-        "NaiveDate" | "NaiveDateTime" | "NaiveTime" => {
-            let component_ident = format!("Default{type_ident}TableCellRenderer");
-            let component_ident = syn::Ident::new(&component_ident, type_ident.span());
-
-            quote! {
-                <#component_ident #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
-            }
-        }
-        "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16"
-        | "i32" | "i64" | "i128" => quote! {
-            <leptos_struct_table::DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
-        },
         _ => quote! {
-            <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
+            <leptos_struct_table::DefaultTableCellRenderer options={#format_props} #value_prop #class_prop #index_prop on_change=|_| {}/>
         },
     }
 }
@@ -115,7 +103,7 @@ fn get_default_option_renderer(
                                     let value = value.clone();
                                     move || value.is_some()
                                 }
-                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop on_change=|_| {}/>}
+                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer value=#none_value.to_string() options={RenderOptions {..Default::default()}} #class_prop #index_prop on_change=|_| {}/>}
                             >
                                 #inner_renderer
                             </leptos::Show>
@@ -161,20 +149,23 @@ fn get_default_renderer_for_type(
 
 fn get_format_props_for_field(field: &TableRowField) -> TokenStream2 {
     let precision = if let Some(p) = &field.format.precision {
-        quote! {precision=(#p as usize)}
+        quote! {precision: Some((#p as usize)),}
     } else {
         quote! {}
     };
 
     let format_string = if let Some(f) = &field.format.string {
-        quote! {format_string=#f.to_string()}
+        quote! {format_string: Some(#f.to_string()),}
     } else {
         quote! {}
     };
 
     quote! {
-        #precision
-        #format_string
+        RenderOptions {
+            #precision
+            #format_string
+            ..Default::default()
+        }
     }
 }
 
@@ -216,7 +207,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
         quote! {
-            <#ident #format_props #value_prop #class_prop #index_prop #on_change_prop/>
+            <#ident #value_prop options={#format_props} #class_prop #index_prop #on_change_prop/>
         }
     } else if let Type::Path(path) = &field.ty {
         let segment = path.path.segments.last().expect("not empty");
@@ -245,7 +236,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
         }
     } else {
         quote! {
-            <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop on_change=|_| {} />
+            <leptos_struct_table::DefaultTableCellRenderer options={#format_props} #value_prop #class_prop on_change=|_| {} />
         }
     }
 }
