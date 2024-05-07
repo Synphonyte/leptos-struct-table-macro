@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use darling::util::IdentString;
 use darling::{ast, util};
-use darling::{FromDeriveInput, FromField, FromMeta};
+use darling::{FromDeriveInput, FromField};
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(
@@ -39,7 +41,7 @@ pub(crate) struct TableRowField {
     pub(crate) renderer: Option<IdentString>,
 
     #[darling(default)]
-    pub(crate) format: Format,
+    pub(crate) format: HashMap<syn::Ident, syn::Lit>,
 
     #[darling(default)]
     pub(crate) class: Option<String>,
@@ -99,9 +101,3 @@ impl TableRowField {
     }
 }
 
-#[derive(Default, FromMeta, Debug)]
-#[darling(default)]
-pub(crate) struct Format {
-    pub(crate) string: Option<String>,
-    pub(crate) precision: Option<i64>,
-}

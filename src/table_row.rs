@@ -37,7 +37,7 @@ fn get_default_render_for_inner_type(
     let format_props = get_format_props_for_field(field, type_ident);
     match type_ident.to_string().as_str() {
         _ => quote! {
-            <leptos_struct_table::DefaultTableCellRenderer options={#format_props} #value_prop #class_prop #index_prop on_change=|_| {}/>
+            <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
         },
     }
 }
@@ -144,24 +144,14 @@ fn get_default_renderer_for_type(
 }
 
 fn get_format_props_for_field(field: &TableRowField, ty: &Ident) -> TokenStream2 {
-    // TODO: this needs to be able to iterate through all field format attributes and set them
-    let precision = if let Some(p) = &field.format.precision {
-        quote! {o.precision = Some((#p as usize));}
-    } else {
-        quote! {}
-    };
-
-    let format_string = if let Some(f) = &field.format.string {
-        quote! {o.format_string = Some(#f.to_string());}
-    } else {
-        quote! {}
-    };
+    let values : Vec<_> = field.format.iter().map(|(ident, value)|  {
+        quote! {o.#ident = Some(#value.into());}
+    }).collect();
 
     quote! {
         {
             let mut o = <#ty as CellValue>::RenderOptions::default();
-            #precision
-            #format_string
+            #(#values)*
             o
       }
     }
