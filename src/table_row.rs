@@ -150,7 +150,7 @@ fn get_format_props_for_field(field: &TableRowField, ty: &Ident) -> TokenStream2
 
     quote! {
         {
-            let mut o = <#ty as CellValue>::RenderOptions::default();
+            let mut o = <#ty as ::leptos_struct_table::CellValue>::RenderOptions::default();
             #(#values)*
             o
       }
