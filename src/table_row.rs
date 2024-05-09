@@ -7,7 +7,6 @@ use syn::__private::TokenStream2;
 use syn::{Error, PathSegment, Type, WhereClause};
 
 fn get_default_renderer_for_field_getter(
-    format_props: &TokenStream,
     class_prop: &TokenStream,
     value_prop: &TokenStream,
     index_prop: &TokenStream,
@@ -17,7 +16,6 @@ fn get_default_renderer_for_field_getter(
 ) -> TokenStream {
     match get_inner_type(segment, "FieldGetter") {
         Ok(type_ident) => get_default_renderer_for_type(
-            format_props,
             class_prop,
             value_prop,
             index_prop,
@@ -30,27 +28,16 @@ fn get_default_renderer_for_field_getter(
 }
 
 fn get_default_render_for_inner_type(
-    format_props: &TokenStream,
     class_prop: &TokenStream,
     value_prop: &TokenStream2,
     index_prop: &TokenStream,
+    field: &TableRowField,
     type_ident: &Ident,
 ) -> TokenStream {
+    let format_props = get_format_props_for_field(field, type_ident);
     match type_ident.to_string().as_str() {
-        "NaiveDate" | "NaiveDateTime" | "NaiveTime" => {
-            let component_ident = format!("Default{type_ident}TableCellRenderer");
-            let component_ident = syn::Ident::new(&component_ident, type_ident.span());
-
-            quote! {
-                <#component_ident #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
-            }
-        }
-        "f32" | "f64" | "Decimal" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16"
-        | "i32" | "i64" | "i128" => quote! {
-            <leptos_struct_table::DefaultNumberTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
-        },
         _ => quote! {
-            <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
+            <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
         },
     }
 }
@@ -80,7 +67,6 @@ fn get_inner_type<'a, 'b>(
 }
 
 fn get_default_option_renderer(
-    format_props: &TokenStream,
     class_prop: &TokenStream,
     index_prop: &TokenStream,
     type_ident: &Ident,
@@ -99,10 +85,10 @@ fn get_default_option_renderer(
                 let none_value = field.none_value.clone().unwrap_or_default();
 
                 let inner_renderer = get_default_render_for_inner_type(
-                    format_props,
                     class_prop,
                     &value_prop,
                     index_prop,
+                    field,
                     inner_type_ident,
                 );
 
@@ -115,7 +101,7 @@ fn get_default_option_renderer(
                                     let value = value.clone();
                                     move || value.is_some()
                                 }
-                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer value=#none_value.to_string() #class_prop #index_prop on_change=|_| {}/>}
+                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer value=#none_value.to_string() options={()} #class_prop #index_prop on_change=|_| {}/>}
                             >
                                 #inner_renderer
                             </leptos::Show>
@@ -131,7 +117,6 @@ fn get_default_option_renderer(
 }
 
 fn get_default_renderer_for_type(
-    format_props: &TokenStream,
     class_prop: &TokenStream,
     value_prop: &TokenStream,
     index_prop: &TokenStream,
@@ -141,7 +126,6 @@ fn get_default_renderer_for_type(
 ) -> TokenStream {
     if type_ident.to_string().starts_with("Option") {
         get_default_option_renderer(
-            format_props,
             class_prop,
             index_prop,
             type_ident,
@@ -150,38 +134,31 @@ fn get_default_renderer_for_type(
         )
     } else {
         get_default_render_for_inner_type(
-            format_props,
             class_prop,
             value_prop,
             index_prop,
+            field,
             type_ident,
         )
     }
 }
 
-fn get_format_props_for_field(field: &TableRowField) -> TokenStream2 {
-    let precision = if let Some(p) = &field.format.precision {
-        quote! {precision=(#p as usize)}
-    } else {
-        quote! {}
-    };
-
-    let format_string = if let Some(f) = &field.format.string {
-        quote! {format_string=#f.to_string()}
-    } else {
-        quote! {}
-    };
+fn get_format_props_for_field(field: &TableRowField, ty: &Ident) -> TokenStream2 {
+    let values : Vec<_> = field.format.iter().map(|(ident, value)|  {
+        quote! {o.#ident = Some(#value.into());}
+    }).collect();
 
     quote! {
-        #precision
-        #format_string
+        {
+            let mut o = <#ty as ::leptos_struct_table::CellValue>::RenderOptions::default();
+            #(#values)*
+            o
+      }
     }
 }
 
 fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> TokenStream2 {
     let getter = get_getter(name, &field.getter, &field.ty);
-
-    let format_props = get_format_props_for_field(field);
 
     let index_prop = quote! {
         index=#index
@@ -216,7 +193,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
         quote! {
-            <#ident #format_props #value_prop #class_prop #index_prop #on_change_prop/>
+            <#ident #value_prop #class_prop #index_prop #on_change_prop/>
         }
     } else if let Type::Path(path) = &field.ty {
         let segment = path.path.segments.last().expect("not empty");
@@ -224,7 +201,6 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
 
         if type_ident == "FieldGetter" {
             get_default_renderer_for_field_getter(
-                &format_props,
                 &class_prop,
                 &value_prop,
                 &index_prop,
@@ -234,7 +210,6 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
             )
         } else {
             get_default_renderer_for_type(
-                &format_props,
                 &class_prop,
                 &value_prop,
                 &index_prop,
@@ -244,9 +219,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
             )
         }
     } else {
-        quote! {
-            <leptos_struct_table::DefaultTableCellRenderer #format_props #value_prop #class_prop on_change=|_| {} />
-        }
+        panic!("This is not supported")
     }
 }
 
