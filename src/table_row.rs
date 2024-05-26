@@ -16,12 +16,7 @@ fn get_default_renderer_for_field_getter(
 ) -> TokenStream {
     match get_inner_type(segment, "FieldGetter") {
         Ok(type_ident) => get_default_renderer_for_type(
-            class_prop,
-            value_prop,
-            index_prop,
-            type_ident,
-            field,
-            getter,
+            class_prop, value_prop, index_prop, type_ident, field, getter,
         ),
         Err(err) => err.to_compile_error(),
     }
@@ -125,28 +120,20 @@ fn get_default_renderer_for_type(
     getter: &TokenStream2,
 ) -> TokenStream {
     if type_ident.to_string().starts_with("Option") {
-        get_default_option_renderer(
-            class_prop,
-            index_prop,
-            type_ident,
-            field,
-            getter,
-        )
+        get_default_option_renderer(class_prop, index_prop, type_ident, field, getter)
     } else {
-        get_default_render_for_inner_type(
-            class_prop,
-            value_prop,
-            index_prop,
-            field,
-            type_ident,
-        )
+        get_default_render_for_inner_type(class_prop, value_prop, index_prop, field, type_ident)
     }
 }
 
 fn get_format_props_for_field(field: &TableRowField, ty: &Ident) -> TokenStream2 {
-    let values : Vec<_> = field.format.iter().map(|(ident, value)|  {
-        quote! {o.#ident = Some(#value.into());}
-    }).collect();
+    let values: Vec<_> = field
+        .format
+        .iter()
+        .map(|(ident, value)| {
+            quote! {o.#ident = Some(#value.into());}
+        })
+        .collect();
 
     quote! {
         {
