@@ -1,6 +1,6 @@
 [package]
 name = "leptos-struct-table-macro"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2021"
 authors = ["Marc-Stefan Cassola"]
 description = "Macros for the leptos-struct-table crate."
@@ -18,3 +18,6 @@ quote = "1.0"
 darling = "0.20"
 proc-macro2 = "1.0"
 heck = "0.4"
+
+[features]
+i18n = []

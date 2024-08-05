@@ -384,11 +384,14 @@ impl ToTokens for TableRowDeriveInput {
             }
 
             let title = if f.skip_header {
-                "".to_string()
+                quote! { "" }
+            } else if cfg!(feature = "i18n") {
+                quote! { { t!(i18n, #name) } }
             } else if let Some(ref t) = f.title {
-                t.clone()
+                quote! { #t }
             } else {
-                name_str.to_title_case()
+                let title = name_str.to_title_case();
+                quote! { #title }
             };
 
             let head_class = f.head_class();
@@ -442,6 +445,14 @@ impl ToTokens for TableRowDeriveInput {
 
         let column_count = cells.len();
 
+        let i18n = if cfg!(feature = "i18n") {
+            quote! {
+                let i18n = crate::i18n::use_i18n();
+            }
+        } else {
+            quote! {}
+        };
+
         tokens.extend(quote! {
             #data_provider_logic
 
@@ -473,6 +484,8 @@ impl ToTokens for TableRowDeriveInput {
                     use leptos_struct_table::TableClassesProvider;
 
                     let class_provider = Self::ClassesProvider::new();
+
+                    #i18n
 
                     leptos::view! {
                         #(#titles)*
