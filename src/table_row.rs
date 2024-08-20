@@ -30,17 +30,15 @@ fn get_default_render_for_inner_type(
     type_ident: &Ident,
 ) -> TokenStream {
     let format_props = get_format_props_for_field(field, type_ident);
-    match type_ident.to_string().as_str() {
-        _ => quote! {
-            <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
-        },
+    quote! {
+        <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
     }
 }
 
 // TODO: Code duplication with get_field_getter_inner_type --> could be merged in one function
-fn get_inner_type<'a, 'b>(
+fn get_inner_type<'a>(
     segment: &'a PathSegment,
-    outer_type_name: &'b str,
+    outer_type_name: &str,
 ) -> Result<&'a Ident, syn::Error> {
     let error_message = format!("`{outer_type_name}` should have one type argument");
 
@@ -156,7 +154,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
 
     let value_prop = quote! { value=row.#getter };
 
-    let on_change_prop = if is_getter(&field) {
+    let on_change_prop = if is_getter(field) {
         quote! {on_change=|_| {}}
     } else {
         quote! { on_change={
