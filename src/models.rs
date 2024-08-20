@@ -4,8 +4,6 @@ use darling::util::IdentString;
 use darling::{ast, util, FromMeta};
 use darling::{FromDeriveInput, FromField};
 use quote::ToTokens;
-use syn::parse::Parser;
-use syn::Token;
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(
@@ -130,9 +128,8 @@ impl I18nFieldOptions {
     }
 }
 
-type I18nKeyInner = syn::punctuated::Punctuated<syn::Ident, Token![.]>;
 #[derive(Debug)]
-pub(crate) struct I18nKey(I18nKeyInner);
+pub(crate) struct I18nKey(proc_macro2::TokenStream);
 
 impl ToTokens for I18nKey {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
@@ -146,8 +143,7 @@ impl FromMeta for I18nKey {
     fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
         let res: darling::Result<Self> = match item {
             syn::Meta::NameValue(syn::MetaNameValue { value, .. }) => {
-                let res = I18nKeyInner::parse_separated_nonempty.parse2(value.to_token_stream());
-                res.map(I18nKey).map_err(darling::Error::custom)
+                Ok(I18nKey(value.to_token_stream()))
             }
             _ => Err(darling::Error::custom(
                 "Providing the i18n key only support the i18n(key = path.to.translations) form, i18n(key) and i18n(key(.., ..)) are not supported.",
