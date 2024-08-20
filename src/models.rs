@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use darling::util::IdentString;
 use darling::{ast, util, FromMeta};
 use darling::{FromDeriveInput, FromField};
-use quote::{quote_spanned, ToTokens};
-use syn::spanned::Spanned;
+use quote::ToTokens;
+use syn::parse::Parser;
+use syn::Token;
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(
@@ -129,8 +130,9 @@ impl I18nFieldOptions {
     }
 }
 
+type I18nKeyInner = syn::punctuated::Punctuated<syn::Ident, Token![.]>;
 #[derive(Debug)]
-pub(crate) struct I18nKey(proc_macro2::TokenStream);
+pub(crate) struct I18nKey(I18nKeyInner);
 
 impl ToTokens for I18nKey {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
@@ -138,20 +140,19 @@ impl ToTokens for I18nKey {
     }
 }
 
+// This is needed to parse `i18n(key = path.to.translations)`, `syn::Punctuated` does implement `FromMeta` but only if the input is a string.
+// We could have `i18n(key = "path.to.translations")` and call it a day, but I prefer without quotes.
 impl FromMeta for I18nKey {
     fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
-        match item {
+        let res: darling::Result<Self> = match item {
             syn::Meta::NameValue(syn::MetaNameValue { value, .. }) => {
-                Ok(I18nKey(value.to_token_stream()))
+                let res = I18nKeyInner::parse_separated_nonempty.parse2(value.to_token_stream());
+                res.map(I18nKey).map_err(darling::Error::custom)
             }
-            syn::Meta::Path(path) => {
-                let span = path.span();
-                Ok(I18nKey(quote_spanned! { span => "" }))
-            }
-            syn::Meta::List(list) => {
-                let span = list.span();
-                Ok(I18nKey(quote_spanned! { span => "" }))
-            }
-        }
+            _ => Err(darling::Error::custom(
+                "Providing the i18n key only support the i18n(key = path.to.translations) form, i18n(key) and i18n(key(.., ..)) are not supported.",
+            )),
+        };
+        res.map_err(|e| e.with_span(item))
     }
 }
