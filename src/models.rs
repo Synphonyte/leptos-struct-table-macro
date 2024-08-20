@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use darling::util::IdentString;
-use darling::{ast, util};
+use darling::{ast, util, FromMeta};
 use darling::{FromDeriveInput, FromField};
+use quote::{quote_spanned, ToTokens};
+use syn::spanned::Spanned;
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(
@@ -29,6 +31,9 @@ pub(crate) struct TableRowDeriveInput {
 
     #[darling(default)]
     pub(crate) row_type: Option<syn::Type>,
+
+    #[darling(default)]
+    pub(crate) i18n: Option<I18nStructOptions>,
 }
 
 #[derive(Debug, FromField)]
@@ -69,6 +74,23 @@ pub(crate) struct TableRowField {
 
     #[darling(default)]
     pub(crate) none_value: Option<String>,
+
+    #[darling(default)]
+    pub(crate) i18n: Option<I18nFieldOptions>,
+}
+
+#[derive(Debug, FromMeta)]
+pub(crate) struct I18nStructOptions {
+    #[darling(default)]
+    pub(crate) path: Option<syn::Path>,
+}
+
+#[derive(Debug, FromMeta)]
+pub(crate) struct I18nFieldOptions {
+    #[darling(default)]
+    pub(crate) skip: Option<bool>,
+    #[darling(default)]
+    pub(crate) key: Option<I18nKey>,
 }
 
 impl TableRowField {
@@ -98,5 +120,38 @@ impl TableRowField {
         }
 
         class
+    }
+}
+
+impl I18nFieldOptions {
+    pub(crate) fn is_skipped(&self) -> bool {
+        self.skip.is_some_and(|v| v)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct I18nKey(proc_macro2::TokenStream);
+
+impl ToTokens for I18nKey {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        self.0.to_tokens(tokens)
+    }
+}
+
+impl FromMeta for I18nKey {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+        match item {
+            syn::Meta::NameValue(syn::MetaNameValue { value, .. }) => {
+                Ok(I18nKey(value.to_token_stream()))
+            }
+            syn::Meta::Path(path) => {
+                let span = path.span();
+                Ok(I18nKey(quote_spanned! { span => "" }))
+            }
+            syn::Meta::List(list) => {
+                let span = list.span();
+                Ok(I18nKey(quote_spanned! { span => "" }))
+            }
+        }
     }
 }

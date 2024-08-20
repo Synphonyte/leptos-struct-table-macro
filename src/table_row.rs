@@ -1,4 +1,4 @@
-use crate::models::{TableRowDeriveInput, TableRowField};
+use crate::models::{I18nFieldOptions, TableRowDeriveInput, TableRowField};
 use darling::util::IdentString;
 use heck::ToTitleCase;
 use proc_macro2::{Ident, TokenStream};
@@ -30,17 +30,15 @@ fn get_default_render_for_inner_type(
     type_ident: &Ident,
 ) -> TokenStream {
     let format_props = get_format_props_for_field(field, type_ident);
-    match type_ident.to_string().as_str() {
-        _ => quote! {
-            <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
-        },
+    quote! {
+        <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
     }
 }
 
 // TODO: Code duplication with get_field_getter_inner_type --> could be merged in one function
-fn get_inner_type<'a, 'b>(
+fn get_inner_type<'a>(
     segment: &'a PathSegment,
-    outer_type_name: &'b str,
+    outer_type_name: &str,
 ) -> Result<&'a Ident, syn::Error> {
     let error_message = format!("`{outer_type_name}` should have one type argument");
 
@@ -156,7 +154,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
 
     let value_prop = quote! { value=row.#getter };
 
-    let on_change_prop = if is_getter(&field) {
+    let on_change_prop = if is_getter(field) {
         quote! {on_change=|_| {}}
     } else {
         quote! { on_change={
@@ -354,7 +352,14 @@ impl ToTokens for TableRowDeriveInput {
             sortable,
             impl_vec_data_provider,
             ref row_type,
+            ref i18n,
         } = *self;
+
+        let i18n_path = i18n
+            .as_ref()
+            .and_then(|i18n| i18n.path.as_ref())
+            .map(ToTokens::to_token_stream)
+            .unwrap_or_else(|| quote!(crate::i18n));
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
 
@@ -385,10 +390,15 @@ impl ToTokens for TableRowDeriveInput {
 
             let title = if f.skip_header {
                 quote! { "" }
-            } else if cfg!(feature = "i18n") {
-                quote! { { t!(i18n, #name) } }
-            } else if let Some(ref t) = f.title {
-                quote! { #t }
+            } else if cfg!(feature = "i18n")
+                && !f.i18n.as_ref().is_some_and(I18nFieldOptions::is_skipped)
+            {
+                match f.i18n.as_ref().and_then(|i18n| i18n.key.as_ref()) {
+                    Some(key_path) => quote!({ #i18n_path::t!(_i18n, #key_path) }),
+                    None => quote! { { #i18n_path::t!(_i18n, #name) } },
+                }
+            } else if let Some(ref title) = f.title {
+                quote! { #title }
             } else {
                 let title = name_str.to_title_case();
                 quote! { #title }
@@ -447,7 +457,7 @@ impl ToTokens for TableRowDeriveInput {
 
         let i18n = if cfg!(feature = "i18n") {
             quote! {
-                let i18n = crate::i18n::use_i18n();
+                let _i18n = #i18n_path::use_i18n();
             }
         } else {
             quote! {}
