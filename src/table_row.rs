@@ -3,8 +3,7 @@ use darling::util::IdentString;
 use heck::ToTitleCase;
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
-use syn::__private::TokenStream2;
-use syn::{Error, PathSegment, Type, WhereClause};
+use syn::{Error, PathSegment, Type, WhereClause, __private::TokenStream2};
 
 fn get_default_renderer_for_field_getter(
     class_prop: &TokenStream,
@@ -27,7 +26,7 @@ fn get_default_render_for_inner_type(
     value_prop: &TokenStream2,
     index_prop: &TokenStream,
     field: &TableRowField,
-    type_ident: &Ident,
+    type_ident: &syn::Type,
 ) -> TokenStream {
     let format_props = get_format_props_for_field(field, type_ident);
     quote! {
@@ -39,7 +38,7 @@ fn get_default_render_for_inner_type(
 fn get_inner_type<'a>(
     segment: &'a PathSegment,
     outer_type_name: &str,
-) -> Result<&'a Ident, syn::Error> {
+) -> Result<&'a syn::Type, syn::Error> {
     let error_message = format!("`{outer_type_name}` should have one type argument");
 
     if let syn::PathArguments::AngleBracketed(arg) = &segment.arguments {
@@ -49,8 +48,8 @@ fn get_inner_type<'a>(
 
         let arg = arg.args.first().expect("just checked above");
 
-        if let syn::GenericArgument::Type(Type::Path(path)) = arg {
-            Ok(&path.path.segments.last().expect("not empty").ident)
+        if let syn::GenericArgument::Type(ty) = arg {
+            Ok(ty)
         } else {
             Err(Error::new_spanned(&segment.ident, &error_message))
         }
@@ -62,7 +61,7 @@ fn get_inner_type<'a>(
 fn get_default_option_renderer(
     class_prop: &TokenStream,
     index_prop: &TokenStream,
-    type_ident: &Ident,
+    type_ident: &syn::Type,
     field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
@@ -109,22 +108,33 @@ fn get_default_option_renderer(
     Error::new_spanned(type_ident, "Invalid Option type").to_compile_error()
 }
 
+fn is_option(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            if segment.ident == "Option" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn get_default_renderer_for_type(
     class_prop: &TokenStream,
     value_prop: &TokenStream,
     index_prop: &TokenStream,
-    type_ident: &Ident,
+    type_ident: &syn::Type,
     field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
-    if type_ident.to_string().starts_with("Option") {
+    if is_option(type_ident) {
         get_default_option_renderer(class_prop, index_prop, type_ident, field, getter)
     } else {
         get_default_render_for_inner_type(class_prop, value_prop, index_prop, field, type_ident)
     }
 }
 
-fn get_format_props_for_field(field: &TableRowField, ty: &Ident) -> TokenStream2 {
+fn get_format_props_for_field(field: &TableRowField, ty: &syn::Type) -> TokenStream2 {
     let values: Vec<_> = field
         .format
         .iter()
@@ -198,7 +208,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
                 &class_prop,
                 &value_prop,
                 &index_prop,
-                type_ident,
+                &field.ty,
                 field,
                 &getter,
             )
@@ -394,7 +404,9 @@ impl ToTokens for TableRowDeriveInput {
                 && !f.i18n.as_ref().is_some_and(I18nFieldOptions::is_skipped)
             {
                 match f.i18n.as_ref().and_then(|i18n| i18n.key.as_ref()) {
-                    Some(key_path) => quote!({ #i18n_path::t!(_i18n, #key_path) }),
+                    Some(key_path) => {
+                        quote!({ #i18n_path::t!(_i18n, #key_path) })
+                    }
                     None => quote! { { #i18n_path::t!(_i18n, #name) } },
                 }
             } else if let Some(ref title) = f.title {
