@@ -29,8 +29,13 @@ fn get_default_render_for_inner_type(
     type_ident: &syn::Type,
 ) -> TokenStream {
     let format_props = get_format_props_for_field(field, type_ident);
+    let marker = field.marker.as_ref().map_or_else(
+        || get_default_cell_value_marker(type_ident),
+        |marker| quote! { #marker },
+    );
+
     quote! {
-        <leptos_struct_table::DefaultTableCellRenderer options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
+        <leptos_struct_table::DefaultTableCellRenderer<#type_ident, _, #marker> options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
     }
 }
 
@@ -70,6 +75,10 @@ fn get_default_option_renderer(
 
         return match get_inner_type(last_segment, "Option") {
             Ok(inner_type_ident) => {
+                let marker = field.marker.as_ref().map_or_else(
+                    || get_default_cell_value_marker(inner_type_ident),
+                    |marker| quote! { #marker },
+                );
                 let value_prop = quote! {
                     value=value.clone().expect("not None")
                 };
@@ -88,15 +97,15 @@ fn get_default_option_renderer(
                     {
                         let value = row.#getter;
                         leptos::view! {
-                            <leptos::Show
+                            <leptos::control_flow::Show
                                 when={
                                     let value = value.clone();
                                     move || value.is_some()
                                 }
-                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer value=#none_value.to_string() options={()} #class_prop #index_prop on_change=|_| {}/>}
+                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer<#inner_type_ident, _, #marker> value=#none_value.to_string() options={()} #class_prop #index_prop on_change=|_| {}/>}
                             >
                                 #inner_renderer
-                            </leptos::Show>
+                            </leptos::control_flow::Show>
                         }
                     }
                 }
@@ -142,13 +151,82 @@ fn get_format_props_for_field(field: &TableRowField, ty: &syn::Type) -> TokenStr
             quote! {o.#ident = Some(#value.into());}
         })
         .collect();
+    let marker = field.marker.as_ref().map_or_else(
+        || get_default_cell_value_marker(ty),
+        |marker| quote! { #marker },
+    );
 
     quote! {
         {
-            let mut o = <#ty as ::leptos_struct_table::CellValue>::RenderOptions::default();
+            use leptos_struct_table::DefaultMarker;
+            let mut o = <#ty as ::leptos_struct_table::CellValue<#marker>>::RenderOptions::default();
             #(#values)*
             o
       }
+    }
+}
+
+fn get_default_cell_value_marker(ty: &syn::Type) -> TokenStream2 {
+    match ty {
+        Type::Path(path) => {
+            let name = path
+                .path
+                .segments
+                .last()
+                .expect("not empty")
+                .ident
+                .to_string();
+            match &*name {
+                "&String" => quote! { &String },
+                "i8" => quote! { i8 },
+                "i16" => quote! { i16 },
+                "i32" => quote! { i32 },
+                "i64" => quote! { i64 },
+                "i128" => quote! { i128 },
+                "isize" => quote! { isize },
+                "u8" => quote! { u8 },
+                "u16" => quote! { u16 },
+                "u32" => quote! { u32 },
+                "u64" => quote! { u64 },
+                "u128" => quote! { u128 },
+                "usize" => quote! { usize },
+                "f32" => quote! { f32 },
+                "f64" => quote! { f64 },
+                "bool" => quote! { bool },
+                "char" => quote! { char },
+                "IpAddr" => quote! { IpAddr },
+                "Ipv4Addr" => quote! { Ipv4Addr },
+                "Ipv6Addr" => quote! { Ipv6Addr },
+                "SocketAddr" => quote! { SocketAddr },
+                "SocketAddrV4" => quote! { SocketAddrV4 },
+                "SocketAddrV6" => quote! { SocketAddrV6 },
+                "ToUpperCase" => quote! { ToUpperCase },
+                "ToLowerCase" => quote! { ToLowerCase },
+                "NonZeroI8" => quote! { NonZeroI8 },
+                "NonZeroI16" => quote! { NonZeroI16 },
+                "NonZeroI32" => quote! { NonZeroI32 },
+                "NonZeroI64" => quote! { NonZeroI64 },
+                "NonZeroI128" => quote! { NonZeroI128 },
+                "NonZeroIsize" => quote! { NonZeroIsize },
+                "NonZeroU8" => quote! { NonZeroU8 },
+                "NonZeroU16" => quote! {NonZeroU16 },
+                "NonZeroU32" => quote! {NonZeroU32 },
+                "NonZeroU64" => quote! {NonZeroU64 },
+                "NonZeroU128" => quote! { NonZeroU128 },
+                "NonZeroUsize" => quote! {NonZeroUsize },
+                "NaiveDate" => quote! { NaiveDate },
+                "NaiveDateTime" => quote! { NaiveDateTime },
+                "NaiveTime" => quote! { NaiveTime },
+                "Decimal" => quote! { Decimal },
+                "Time" => quote! { Time },
+                "Date" => quote! { Date },
+                "PrimitiveDateTime" => quote! { PrimitiveDateTime },
+                "OffsetDateTime" => quote! { OffsetDateTime },
+                "Uuid" => quote! { Uuid },
+                _ => quote! { DefaultMarker },
+            }
+        }
+        _ => quote! { DefaultMarker },
     }
 }
 
@@ -432,18 +510,19 @@ impl ToTokens for TableRowDeriveInput {
 
             titles.push(quote! {
                 <#thead_cell_renderer
-                    class=leptos::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#index, sorting), #head_class))
+                    class=leptos::prelude::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#index, sorting), #head_class))
                     inner_class=class_provider.thead_cell_inner()
                     index=#index
-                    sort_priority=leptos::Signal::derive(move || {
-                        use leptos::SignalGet;
+                    sort_priority=leptos::prelude::Signal::derive(move || {
+                        use leptos::prelude::Read;
 
-                        if sorting.get().len() < 2 {
+                        let sorting = sorting.read();
+                        if sorting.len() < 2 {
                             return None;
                         }
-                        sorting.get().iter().position(|(index, _)| *index == #index)
+                        sorting.iter().position(|(index, _)| *index == #index)
                     })
-                    sort_direction=leptos::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#index, sorting))
+                    sort_direction=leptos::prelude::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#index, sorting))
                     #on_click_handling
                 >
                     #title
@@ -485,8 +564,9 @@ impl ToTokens for TableRowDeriveInput {
 
                 const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(&self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl leptos::IntoView {
+                fn render_row(self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl leptos::IntoView {
                     use leptos_struct_table::TableClassesProvider;
+                    use leptos_struct_table::DefaultMarker;
 
                     let class_provider = Self::ClassesProvider::new();
                     let row = self.clone();
@@ -497,7 +577,7 @@ impl ToTokens for TableRowDeriveInput {
                 }
 
                 fn render_head_row<F>(
-                    sorting: leptos::Signal<std::collections::VecDeque<(usize, leptos_struct_table::ColumnSort)>>,
+                    sorting: leptos::prelude::Signal<std::collections::VecDeque<(usize, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
                 ) -> impl leptos::IntoView
                 where
