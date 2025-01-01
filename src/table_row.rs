@@ -103,7 +103,7 @@ fn get_default_option_renderer(
                                     move || value
                                 }
                                 fallback=move || {
-                                    use leptos_struct_table::DefaultMarker;
+                                    type DefaultMarker = ();
                                     leptos::view! {
                                         <leptos_struct_table::DefaultTableCellRenderer<String, _, DefaultMarker>
                                             value=#none_value.clone()
@@ -167,7 +167,7 @@ fn get_format_props_for_field(field: &TableRowField, ty: &syn::Type) -> TokenStr
 
     quote! {
         {
-            use leptos_struct_table::DefaultMarker;
+            type DefaultMarker = ();
             let mut o = <#ty as ::leptos_struct_table::CellValue<#marker>>::RenderOptions::default();
             #(#values)*
             o
@@ -575,7 +575,7 @@ impl ToTokens for TableRowDeriveInput {
 
                 fn render_row(self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl leptos::IntoView {
                     use leptos_struct_table::TableClassesProvider;
-                    use leptos_struct_table::DefaultMarker;
+                    type DefaultMarker = ();
 
                     let class_provider = Self::ClassesProvider::new();
                     let row = self.clone();
