@@ -99,10 +99,19 @@ fn get_default_option_renderer(
                         leptos::view! {
                             <leptos::control_flow::Show
                                 when={
-                                    let value = value.clone();
-                                    move || value.is_some()
+                                    let value = value.is_some();
+                                    move || value
                                 }
-                                fallback=move || leptos::view!{<leptos_struct_table::DefaultTableCellRenderer<#inner_type_ident, _, #marker> value=#none_value.to_string() options={()} #class_prop #index_prop on_change=|_| {}/>}
+                                fallback=move || {
+                                    use leptos_struct_table::DefaultMarker;
+                                    leptos::view! {
+                                        <leptos_struct_table::DefaultTableCellRenderer<String, _, DefaultMarker>
+                                            value=#none_value.clone()
+                                            options={()}
+                                            #class_prop #index_prop on_change=|_| {}
+                                        />
+                                    }
+                                }
                             >
                                 #inner_renderer
                             </leptos::control_flow::Show>
