@@ -75,10 +75,6 @@ fn get_default_option_renderer(
 
         return match get_inner_type(last_segment, "Option") {
             Ok(inner_type_ident) => {
-                let marker = field.marker.as_ref().map_or_else(
-                    || get_default_cell_value_marker(inner_type_ident),
-                    |marker| quote! { #marker },
-                );
                 let value_prop = quote! {
                     value=value.clone().expect("not None")
                 };
@@ -218,11 +214,11 @@ fn get_default_cell_value_marker(ty: &syn::Type) -> TokenStream2 {
                 "NonZeroI128" => quote! { NonZeroI128 },
                 "NonZeroIsize" => quote! { NonZeroIsize },
                 "NonZeroU8" => quote! { NonZeroU8 },
-                "NonZeroU16" => quote! {NonZeroU16 },
-                "NonZeroU32" => quote! {NonZeroU32 },
-                "NonZeroU64" => quote! {NonZeroU64 },
+                "NonZeroU16" => quote! { NonZeroU16 },
+                "NonZeroU32" => quote! { NonZeroU32 },
+                "NonZeroU64" => quote! { NonZeroU64 },
                 "NonZeroU128" => quote! { NonZeroU128 },
-                "NonZeroUsize" => quote! {NonZeroUsize },
+                "NonZeroUsize" => quote! { NonZeroUsize },
                 "NaiveDate" => quote! { NaiveDate },
                 "NaiveDateTime" => quote! { NaiveDateTime },
                 "NaiveTime" => quote! { NaiveTime },
