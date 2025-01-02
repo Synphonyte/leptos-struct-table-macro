@@ -42,6 +42,9 @@ pub(crate) struct TableRowField {
     pub(crate) ty: syn::Type,
 
     #[darling(default)]
+    pub(crate) marker: Option<syn::Ident>,
+
+    #[darling(default)]
     pub(crate) renderer: Option<IdentString>,
 
     #[darling(default)]
