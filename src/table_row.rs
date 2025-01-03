@@ -425,6 +425,10 @@ impl ToTokens for TableRowDeriveInput {
             .and_then(|i18n| i18n.path.as_ref())
             .map(ToTokens::to_token_stream)
             .unwrap_or_else(|| quote!(crate::i18n));
+        let i18n_scope = i18n
+            .as_ref()
+            .and_then(|i18n| i18n.scope.as_ref())
+            .map(ToTokens::to_token_stream);
 
         let fields = data.as_ref().take_struct().expect("Is not enum").fields;
 
@@ -524,8 +528,17 @@ impl ToTokens for TableRowDeriveInput {
         let column_count = cells.len();
 
         let i18n = if cfg!(feature = "i18n") {
-            quote! {
-                let _i18n = #i18n_path::use_i18n();
+            if let Some(scope) = i18n_scope {
+                quote! {
+                    let _i18n = {
+                        use #i18n_path::use_i18n;
+                        #i18n_path::use_i18n_scoped!(#scope)
+                    };
+                }
+            } else {
+                quote! {
+                    let _i18n = #i18n_path::use_i18n();
+                }
             }
         } else {
             quote! {}

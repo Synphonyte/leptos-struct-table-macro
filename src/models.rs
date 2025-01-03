@@ -4,6 +4,7 @@ use darling::util::IdentString;
 use darling::{ast, util, FromMeta};
 use darling::{FromDeriveInput, FromField};
 use quote::ToTokens;
+use syn::punctuated::Punctuated;
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(
@@ -85,6 +86,8 @@ pub(crate) struct TableRowField {
 pub(crate) struct I18nStructOptions {
     #[darling(default)]
     pub(crate) path: Option<syn::Path>,
+    #[darling(default)]
+    pub(crate) scope: Option<Punctuated<syn::Ident, syn::Token![.]>>,
 }
 
 #[derive(Debug, FromMeta)]
