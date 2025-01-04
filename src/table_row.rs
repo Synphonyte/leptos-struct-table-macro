@@ -35,7 +35,7 @@ fn get_default_render_for_inner_type(
     );
 
     quote! {
-        <leptos_struct_table::DefaultTableCellRenderer<#type_ident, _, #marker> options=#format_props #value_prop #class_prop #index_prop on_change=|_| {}/>
+        <leptos_struct_table::DefaultTableCellRenderer<_, #type_ident, #marker> options=#format_props #value_prop #class_prop #index_prop row=row />
     }
 }
 
@@ -76,7 +76,7 @@ fn get_default_option_renderer(
         return match get_inner_type(last_segment, "Option") {
             Ok(inner_type_ident) => {
                 let value_prop = quote! {
-                    value=value.clone().expect("not None")
+                    value=Signal::derive(move || value.get().expect("Just checked above that it's not None"))
                 };
 
                 let none_value = field.none_value.clone().unwrap_or_default();
@@ -91,20 +91,20 @@ fn get_default_option_renderer(
 
                 quote! {
                     {
-                        let value = row.#getter;
+                        let value = Signal::derive(move || { row.read().#getter });
+
                         leptos::view! {
                             <leptos::control_flow::Show
                                 when={
-                                    let value = value.is_some();
-                                    move || value
+                                    move || { value.read().is_some() }
                                 }
                                 fallback=move || {
                                     type DefaultMarker = ();
                                     leptos::view! {
-                                        <leptos_struct_table::DefaultTableCellRenderer<String, _, DefaultMarker>
-                                            value=#none_value.clone()
+                                        <leptos_struct_table::DefaultTableCellRenderer<_, String, DefaultMarker>
+                                            value=Signal::stored(#none_value.to_string())
                                             options={()}
-                                            #class_prop #index_prop on_change=|_| {}
+                                            #class_prop #index_prop row=row
                                         />
                                     }
                                 }
@@ -245,33 +245,12 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
     let class = field.cell_class();
     let class_prop = quote! { class=class_provider.cell( # class) };
 
-    let value_prop = quote! { value=row.#getter };
-
-    let on_change_prop = if is_getter(field) {
-        quote! {on_change=|_| {}}
-    } else {
-        quote! { on_change={
-            let on_change = on_change.clone();
-            let row = self.clone();
-
-            move |new_value| {
-                let mut changed_row = row.clone();
-                changed_row.#name = new_value;
-
-                let event = leptos_struct_table::ChangeEvent {
-                    row_index: index,
-                    col_index: #index,
-                    changed_row,
-                };
-                on_change.run(event);
-            }
-        }}
-    };
+    let value_prop = quote! { value={ Signal::derive(move || row.read().#getter) } };
 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
         quote! {
-            <#ident #value_prop #class_prop #index_prop #on_change_prop/>
+            <#ident #value_prop #class_prop #index_prop row=row />
         }
     } else if let Type::Path(path) = &field.ty {
         let segment = path.path.segments.last().expect("not empty");
@@ -308,21 +287,6 @@ fn get_thead_cell_renderer_for_field(thead_cell_renderer: &Option<IdentString>) 
     } else {
         quote! {leptos_struct_table::DefaultTableHeaderCellRenderer}
     }
-}
-
-fn is_getter(field: &TableRowField) -> bool {
-    if field.getter.is_some() {
-        return true;
-    }
-
-    if let Type::Path(path) = &field.ty {
-        let type_ident = &path.path.segments.last().expect("not empty").ident;
-        if type_ident.to_string().as_str() == "FieldGetter" {
-            return true;
-        }
-    }
-
-    false
 }
 
 fn get_getter(name: &Ident, getter: &Option<IdentString>, ty: &Type) -> TokenStream2 {
@@ -569,12 +533,11 @@ impl ToTokens for TableRowDeriveInput {
 
                 const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(self, index: usize, on_change: leptos_struct_table::EventHandler<leptos_struct_table::ChangeEvent<Self>>) -> impl leptos::IntoView {
+                fn render_row(row: leptos::prelude::RwSignal<Self>, index: usize) -> impl leptos::IntoView {
                     use leptos_struct_table::TableClassesProvider;
                     type DefaultMarker = ();
 
                     let class_provider = Self::ClassesProvider::new();
-                    let row = self.clone();
 
                     leptos::view! {
                         #(#cells)*
