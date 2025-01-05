@@ -76,7 +76,7 @@ fn get_default_option_renderer(
         return match get_inner_type(last_segment, "Option") {
             Ok(inner_type_ident) => {
                 let value_prop = quote! {
-                    value=Signal::derive(move || value.get().expect("Just checked above that it's not None"))
+                    value=leptos::prelude::Signal::derive(move || value.get().expect("Just checked above that it's not None"))
                 };
 
                 let none_value = field.none_value.clone().unwrap_or_default();
@@ -91,9 +91,11 @@ fn get_default_option_renderer(
 
                 quote! {
                     {
-                        let value = Signal::derive(move || { row.read().#getter });
+                        use leptos::prelude::Read;
 
-                        leptos::view! {
+                        let value = leptos::prelude::Signal::derive(move || { row.read().#getter });
+
+                        leptos::prelude::view! {
                             <leptos::control_flow::Show
                                 when={
                                     move || { value.read().is_some() }
@@ -102,7 +104,7 @@ fn get_default_option_renderer(
                                     type DefaultMarker = ();
                                     leptos::view! {
                                         <leptos_struct_table::DefaultTableCellRenderer<_, String, DefaultMarker>
-                                            value=Signal::stored(#none_value.to_string())
+                                            value=leptos::prelude::Signal::stored(#none_value.to_string())
                                             options={()}
                                             #class_prop #index_prop row=row
                                         />
@@ -245,7 +247,13 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
     let class = field.cell_class();
     let class_prop = quote! { class=class_provider.cell( # class) };
 
-    let value_prop = quote! { value={ Signal::derive(move || row.read().#getter) } };
+    let value_prop = quote! {
+        value={
+            use leptos::prelude::Read;
+
+            leptos::prelude::Signal::derive(move || row.read().#getter)
+        }
+    };
 
     if let Some(renderer) = &field.renderer {
         let ident = renderer.as_ident();
