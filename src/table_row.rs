@@ -1,21 +1,28 @@
-use crate::models::{I18nFieldOptions, TableRowDeriveInput, TableRowField};
+use crate::models::{ColumnIndexType, I18nFieldOptions, TableRowDeriveInput, TableRowField};
 use darling::util::IdentString;
-use heck::ToTitleCase;
+use heck::{ToTitleCase, ToUpperCamelCase};
 use proc_macro2::{Ident, TokenStream};
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use syn::{Error, PathSegment, Type, WhereClause, __private::TokenStream2};
 
 fn get_default_renderer_for_field_getter(
     class_prop: &TokenStream,
     value_prop: &TokenStream,
     index_prop: &TokenStream,
+    column_type: &TokenStream,
     segment: &PathSegment,
     field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
     match get_inner_type(segment, "FieldGetter") {
         Ok(type_ident) => get_default_renderer_for_type(
-            class_prop, value_prop, index_prop, type_ident, field, getter,
+            class_prop,
+            value_prop,
+            index_prop,
+            &column_type,
+            type_ident,
+            field,
+            getter,
         ),
         Err(err) => err.to_compile_error(),
     }
@@ -25,6 +32,7 @@ fn get_default_render_for_inner_type(
     class_prop: &TokenStream,
     value_prop: &TokenStream2,
     index_prop: &TokenStream,
+    column_type: &TokenStream,
     field: &TableRowField,
     type_ident: &syn::Type,
 ) -> TokenStream {
@@ -35,7 +43,7 @@ fn get_default_render_for_inner_type(
     );
 
     quote! {
-        <leptos_struct_table::DefaultTableCellRenderer<_, #type_ident, #marker> options=#format_props #value_prop #class_prop #index_prop row=row />
+        <leptos_struct_table::DefaultTableCellRenderer<_, #column_type, #type_ident, #marker> options=#format_props #value_prop #class_prop #index_prop row=row />
     }
 }
 
@@ -67,6 +75,7 @@ fn get_default_option_renderer(
     class_prop: &TokenStream,
     index_prop: &TokenStream,
     type_ident: &syn::Type,
+    column_type: &TokenStream,
     field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
@@ -85,6 +94,7 @@ fn get_default_option_renderer(
                     class_prop,
                     &value_prop,
                     index_prop,
+                    column_type,
                     field,
                     inner_type_ident,
                 );
@@ -103,7 +113,7 @@ fn get_default_option_renderer(
                                 fallback=move || {
                                     type DefaultMarker = ();
                                     leptos::view! {
-                                        <leptos_struct_table::DefaultTableCellRenderer<_, String, DefaultMarker>
+                                        <leptos_struct_table::DefaultTableCellRenderer<_, #column_type, String, DefaultMarker>
                                             value=leptos::prelude::Signal::stored(#none_value.to_string())
                                             options={()}
                                             #class_prop #index_prop row=row
@@ -139,14 +149,29 @@ fn get_default_renderer_for_type(
     class_prop: &TokenStream,
     value_prop: &TokenStream,
     index_prop: &TokenStream,
+    column_type: &TokenStream,
     type_ident: &syn::Type,
     field: &TableRowField,
     getter: &TokenStream2,
 ) -> TokenStream {
     if is_option(type_ident) {
-        get_default_option_renderer(class_prop, index_prop, type_ident, field, getter)
+        get_default_option_renderer(
+            class_prop,
+            index_prop,
+            type_ident,
+            column_type,
+            field,
+            getter,
+        )
     } else {
-        get_default_render_for_inner_type(class_prop, value_prop, index_prop, field, type_ident)
+        get_default_render_for_inner_type(
+            class_prop,
+            value_prop,
+            index_prop,
+            column_type,
+            field,
+            type_ident,
+        )
     }
 }
 
@@ -237,7 +262,13 @@ fn get_default_cell_value_marker(ty: &syn::Type) -> TokenStream2 {
     }
 }
 
-fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> TokenStream2 {
+/// * index: contains the value for the generic column type.
+fn get_renderer_for_field(
+    name: &Ident,
+    field: &TableRowField,
+    column_type: &TokenStream,
+    index: &TokenStream,
+) -> TokenStream2 {
     let getter = get_getter(name, &field.getter, &field.ty);
 
     let index_prop = quote! {
@@ -269,6 +300,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
                 &class_prop,
                 &value_prop,
                 &index_prop,
+                column_type,
                 segment,
                 field,
                 &getter,
@@ -278,6 +310,7 @@ fn get_renderer_for_field(name: &Ident, field: &TableRowField, index: usize) -> 
                 &class_prop,
                 &value_prop,
                 &index_prop,
+                column_type,
                 &field.ty,
                 field,
                 &getter,
@@ -316,6 +349,8 @@ fn get_getter(name: &Ident, getter: &Option<IdentString>, ty: &Type) -> TokenStr
 fn get_data_provider_logic(
     ident: &TokenStream,
     generic_params: &TokenStream,
+    column_type: &TokenStream,
+    column_variants: impl IntoIterator<Item = TokenStream>,
     where_clause: &Option<WhereClause>,
     sortable: bool,
     fields: &[&TableRowField],
@@ -324,7 +359,7 @@ fn get_data_provider_logic(
 
     let mut column_value_cmp_arms = vec![];
 
-    let mut col_index = 0_usize;
+    let mut column_variants = column_variants.into_iter();
 
     for f in fields.iter() {
         let name = f.ident.as_ref().expect("named field");
@@ -344,24 +379,26 @@ fn get_data_provider_logic(
 
         let name_str = name.to_string();
 
+        let col_variant = column_variants.next().expect(
+            "there need to be enough variants for each column (internal invariant broken).",
+        );
+
         column_name_display_arms.push(quote! {
-            #col_index => #name_str,
+            #col_variant => #name_str,
         });
 
         if !skip_sort {
             // TODO : optimize: these getters don't need the clones
             column_value_cmp_arms.push(quote! {
-                #col_index => a.#getter.partial_cmp(&b.#getter),
+                #col_variant => a.#getter.partial_cmp(&b.#getter),
             });
         }
-
-        col_index += 1;
     }
 
     let cmp_fn = quote! {
-        |a: &#ident, b: &#ident, col_index: usize| match col_index {
+        |a: &#ident, b: &#ident, col_index: #column_type| match col_index {
             #(#column_value_cmp_arms)*
-            _ => unreachable!("col_index: {col_index}")
+            _ => unreachable!("col_index: {col_index:?}")
         }
     };
 
@@ -372,7 +409,7 @@ fn get_data_provider_logic(
 
     let set_sorting_impl = if sortable {
         quote! {
-            fn set_sorting(&mut self, sorting: &std::collections::VecDeque<(usize, ColumnSort)>) {
+            fn set_sorting(&mut self, sorting: &std::collections::VecDeque<(#column_type, ColumnSort)>) {
                 let cmp_fn = #cmp_fn;
 
                 for (col_index, sort) in sorting.iter().rev() {
@@ -390,7 +427,7 @@ fn get_data_provider_logic(
     };
 
     quote! {
-        impl #generic_params TableDataProvider<#ident> for Vec<#ident>
+        impl #generic_params TableDataProvider<#ident, #column_type> for Vec<#ident>
         #where_clause
         {
             async fn get_rows(&self, range: std::ops::Range<usize> ) -> Result<(Vec<#ident>, std::ops::Range<usize>), String> {
@@ -416,6 +453,7 @@ impl ToTokens for TableRowDeriveInput {
             ref classes_provider,
             sortable,
             impl_vec_data_provider,
+            ref column_index_type,
             ref row_type,
             ref i18n,
         } = *self;
@@ -449,6 +487,39 @@ impl ToTokens for TableRowDeriveInput {
         let mut cells = vec![];
         let mut col_name_match_arms = vec![];
 
+        // User provided type converted to an enum with supported types.
+        let column_index_type = column_index_type
+            .as_ref()
+            .map_or(ColumnIndexType::Usize, |t| match t {
+                Type::Path(token_stream) => match token_stream.path.get_ident() {
+                    Some(ident) => {
+                        if ident.to_string() == "usize" {
+                            ColumnIndexType::Usize
+                        } else {
+                            ColumnIndexType::Enum
+                        }
+                    }
+                    None => ColumnIndexType::Usize,
+                },
+                _ => ColumnIndexType::Usize,
+            });
+
+        // Accumulates the enum variants during the fields loop
+        let mut enum_tokens: Option<_> = if matches!(column_index_type, ColumnIndexType::Enum) {
+            Some(quote! {})
+        } else {
+            None
+        };
+
+        let column_type_name = format_ident!("{ident}Column");
+        let column_type = match column_index_type {
+            ColumnIndexType::Usize => quote! { usize },
+            ColumnIndexType::Enum => quote! { #column_type_name },
+        };
+
+        // Fully qualified columng_type variants
+        let mut column_variants: Vec<TokenStream> = Vec::new();
+
         for f in &fields {
             let name = f.ident.as_ref().expect("named field");
             let name_str = name.to_string();
@@ -479,7 +550,7 @@ impl ToTokens for TableRowDeriveInput {
 
             let thead_cell_renderer = get_thead_cell_renderer_for_field(thead_cell_renderer);
 
-            let index = titles.len();
+            let cell_index = titles.len();
 
             let on_click_handling = if sortable && !f.skip_sort {
                 quote! { on_click=on_head_click.clone() }
@@ -487,13 +558,23 @@ impl ToTokens for TableRowDeriveInput {
                 quote! { on_click=|_| () }
             };
 
-            col_name_match_arms.push(quote! {#index => #name_str,});
+            let variant_name = format_ident!("{}", name_str.to_upper_camel_case());
+            let column = match column_index_type {
+                ColumnIndexType::Usize => quote! { #cell_index },
+                ColumnIndexType::Enum => quote! { #column_type_name::#variant_name },
+            };
+            column_variants.push(quote! { #column });
+            col_name_match_arms.push(quote! {#column => #name_str,});
+
+            if let Some(enum_variants) = &mut enum_tokens {
+                enum_variants.extend(quote! { #variant_name, });
+            }
 
             titles.push(quote! {
                 <#thead_cell_renderer
-                    class=leptos::prelude::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#index, sorting), #head_class))
+                    class=leptos::prelude::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#column, sorting), #head_class))
                     inner_class=class_provider.thead_cell_inner()
-                    index=#index
+                    index=#column
                     sort_priority=leptos::prelude::Signal::derive(move || {
                         use leptos::prelude::Read;
 
@@ -501,21 +582,38 @@ impl ToTokens for TableRowDeriveInput {
                         if sorting.len() < 2 {
                             return None;
                         }
-                        sorting.iter().position(|(index, _)| *index == #index)
+                        sorting.iter().position(|(index, _)| *index == #column)
                     })
-                    sort_direction=leptos::prelude::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#index, sorting))
+                    sort_direction=leptos::prelude::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#column, sorting))
                     #on_click_handling
                 >
                     #title
                 </#thead_cell_renderer>
             });
 
-            let cell_renderer = get_renderer_for_field(name, f, cells.len());
+            let cell_renderer = get_renderer_for_field(name, f, &column_type, &column);
             cells.push(cell_renderer);
         }
 
+        if let Some(enum_variants) = enum_tokens {
+            enum_tokens = Some(quote! {
+                #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+                enum #column_type_name {
+                    #enum_variants
+                }
+            });
+        }
+
         let data_provider_logic = if impl_vec_data_provider {
-            get_data_provider_logic(&ident, &generic_params_wb, where_clause, sortable, &fields)
+            get_data_provider_logic(
+                &ident,
+                &generic_params_wb,
+                &column_type,
+                column_variants,
+                where_clause,
+                sortable,
+                &fields,
+            )
         } else {
             quote! {}
         };
@@ -547,7 +645,9 @@ impl ToTokens for TableRowDeriveInput {
         tokens.extend(quote! {
             #data_provider_logic
 
-            impl #generic_params_wb leptos_struct_table::TableRow for #ident
+            #enum_tokens
+
+            impl #generic_params_wb leptos_struct_table::TableRow<#column_type> for #ident
             #where_clause
             {
                 type ClassesProvider = #classes_provider_ident;
@@ -566,11 +666,11 @@ impl ToTokens for TableRowDeriveInput {
                 }
 
                 fn render_head_row<F>(
-                    sorting: leptos::prelude::Signal<std::collections::VecDeque<(usize, leptos_struct_table::ColumnSort)>>,
+                    sorting: leptos::prelude::Signal<std::collections::VecDeque<(#column_type, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
                 ) -> impl leptos::IntoView
                 where
-                    F: Fn(leptos_struct_table::TableHeadEvent) + Clone + 'static,
+                    F: Fn(leptos_struct_table::TableHeadEvent<#column_type>) + Clone + 'static,
                 {
                     use leptos_struct_table::TableClassesProvider;
 
@@ -583,10 +683,10 @@ impl ToTokens for TableRowDeriveInput {
                     }
                 }
 
-                fn col_name(col_index: usize) -> &'static str {
+                fn col_name(col_index: #column_type) -> &'static str {
                     match col_index {
                         #(#col_name_match_arms)*
-                        _ => unreachable!("Column index {} out of bounds", col_index),
+                        _ => unreachable!("Column index {:?} out of bounds", col_index),
                     }
                 }
             }
