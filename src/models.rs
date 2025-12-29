@@ -14,6 +14,7 @@ use syn::punctuated::Punctuated;
 )]
 pub(crate) struct TableRowDeriveInput {
     pub(crate) ident: syn::Ident,
+    pub(crate) vis: syn::Visibility,
     pub(crate) data: ast::Data<util::Ignored, TableRowField>,
     pub(crate) generics: syn::Generics,
 

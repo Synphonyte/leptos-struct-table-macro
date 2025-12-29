@@ -19,7 +19,7 @@ fn get_default_renderer_for_field_getter(
             class_prop,
             value_prop,
             index_prop,
-            &column_type,
+            column_type,
             type_ident,
             field,
             getter,
@@ -447,6 +447,7 @@ impl ToTokens for TableRowDeriveInput {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let TableRowDeriveInput {
             ref ident,
+            ref vis,
             ref data,
             ref generics,
             ref thead_cell_renderer,
@@ -478,6 +479,7 @@ impl ToTokens for TableRowDeriveInput {
             quote! {<#generic_params>}
         };
 
+        let table_row_name = ident;
         let ident = row_type.as_ref().map_or(
             quote! { #ident #generic_params_wb },
             |row_type| quote! { #row_type },
@@ -493,7 +495,7 @@ impl ToTokens for TableRowDeriveInput {
             .map_or(ColumnIndexType::Usize, |t| match t {
                 Type::Path(token_stream) => match token_stream.path.get_ident() {
                     Some(ident) => {
-                        if ident.to_string() == "usize" {
+                        if *ident == "usize" {
                             ColumnIndexType::Usize
                         } else {
                             ColumnIndexType::Enum
@@ -511,7 +513,8 @@ impl ToTokens for TableRowDeriveInput {
             None
         };
 
-        let column_type_name = format_ident!("{ident}Column");
+        let column_type_vis = vis;
+        let column_type_name = format_ident!("{table_row_name}Column");
         let column_type = match column_index_type {
             ColumnIndexType::Usize => quote! { usize },
             ColumnIndexType::Enum => quote! { #column_type_name },
@@ -567,7 +570,11 @@ impl ToTokens for TableRowDeriveInput {
             col_name_match_arms.push(quote! {#column => #name_str,});
 
             if let Some(enum_variants) = &mut enum_tokens {
-                enum_variants.extend(quote! { #variant_name, });
+                let doc = format!("Generated variant for [{name_str}]");
+                enum_variants.extend(quote! {
+                #[doc = #doc]
+                ///
+                #variant_name, });
             }
 
             titles.push(quote! {
@@ -597,8 +604,9 @@ impl ToTokens for TableRowDeriveInput {
 
         if let Some(enum_variants) = enum_tokens {
             enum_tokens = Some(quote! {
+                /// Generated enum, variants are the unskipped fields of the associated struct.
                 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
-                enum #column_type_name {
+                #column_type_vis enum #column_type_name {
                     #enum_variants
                 }
             });
