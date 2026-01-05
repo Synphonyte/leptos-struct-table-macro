@@ -485,8 +485,11 @@ impl ToTokens for TableRowDeriveInput {
             |row_type| quote! { #row_type },
         );
 
+        // Head-row cells
         let mut titles = vec![];
+        // Row cells
         let mut cells = vec![];
+        // List of Column => "name",
         let mut col_name_match_arms = vec![];
 
         // User provided type converted to an enum with supported types.
@@ -577,7 +580,7 @@ impl ToTokens for TableRowDeriveInput {
                 #variant_name, });
             }
 
-            titles.push(quote! {
+            let thead_renderer = quote! {
                 <#thead_cell_renderer
                     class=leptos::prelude::Signal::derive(move || class_provider.thead_cell(leptos_struct_table::get_sorting_for_column(#column, sorting), #head_class))
                     inner_class=class_provider.thead_cell_inner()
@@ -593,19 +596,30 @@ impl ToTokens for TableRowDeriveInput {
                     })
                     sort_direction=leptos::prelude::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#column, sorting))
                     #on_click_handling
+                    drag_manager=drag_manager.clone()
                 >
                     #title
                 </#thead_cell_renderer>
-            });
+            };
+            titles.push(quote! { #column => leptos::view! { #thead_renderer }.into_any(), });
 
             let cell_renderer = get_renderer_for_field(name, f, &column_type, &column);
-            cells.push(cell_renderer);
+            cells.push(quote! { #column => leptos::view! { #cell_renderer }.into_any(), });
         }
+
+        let comma_sep_column_variants = column_variants
+            .clone()
+            .into_iter()
+            .reduce(|mut acc, e| {
+                acc.extend([quote! {, }, e]);
+                acc
+            })
+            .unwrap_or_default();
 
         if let Some(enum_variants) = enum_tokens {
             enum_tokens = Some(quote! {
                 /// Generated enum, variants are the unskipped fields of the associated struct.
-                #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+                #[derive(Hash, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
                 #column_type_vis enum #column_type_name {
                     #enum_variants
                 }
@@ -651,6 +665,8 @@ impl ToTokens for TableRowDeriveInput {
         };
 
         tokens.extend(quote! {
+            use leptos::prelude::{Signal, RwSignal};
+
             #data_provider_logic
 
             #enum_tokens
@@ -662,33 +678,61 @@ impl ToTokens for TableRowDeriveInput {
 
                 const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(row: leptos::prelude::RwSignal<Self>, index: usize) -> impl leptos::IntoView {
+                fn render_row(row: RwSignal<Self>, index: usize, columns: RwSignal<Vec<#column_type>>) -> impl leptos::IntoView {
                     use leptos_struct_table::TableClassesProvider;
+                    use leptos::control_flow::For;
+                    use leptos::prelude::{Get, IntoAny};
                     type DefaultMarker = ();
 
                     let class_provider = Self::ClassesProvider::new();
 
                     leptos::view! {
-                        #(#cells)*
+                        <For
+                            each=move || columns.get().into_iter()
+                            key=|column| column.clone()
+                            children=move |column| {
+                                match column {
+                                    #(#cells)*
+                                    other => leptos::view! { "Unmatched column type {other:?}, probably a bug." }.into_any()
+                                }
+                            }>
+                        </For>
                     }
                 }
 
                 fn render_head_row<F>(
-                    sorting: leptos::prelude::Signal<std::collections::VecDeque<(#column_type, leptos_struct_table::ColumnSort)>>,
+                    sorting: Signal<std::collections::VecDeque<(#column_type, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
+                    drag_manager: leptos_struct_table::DragManager<#column_type>,
+                    columns: RwSignal<Vec<#column_type>>
                 ) -> impl leptos::IntoView
                 where
-                    F: Fn(leptos_struct_table::TableHeadEvent<#column_type>) + Clone + 'static,
+                    F: Fn(leptos_struct_table::TableHeadEvent<#column_type>) + Send + Clone + 'static,
                 {
                     use leptos_struct_table::TableClassesProvider;
+                    use leptos::prelude::{Get, IntoAny};
+                    use leptos::control_flow::For;
 
                     let class_provider = Self::ClassesProvider::new();
 
                     #i18n
 
                     leptos::view! {
-                        #(#titles)*
+                        <For
+                            each=move || columns.get().into_iter()
+                            key=|column| column.clone()
+                            children=move |column| {
+                                match column {
+                                    #(#titles)*
+                                    other => leptos::view! { "Unmatched column type {other:?}, probably a bug." }.into_any()
+                                }
+                            }>
+                        </For>
                     }
+                }
+
+                fn columns() -> &'static [#column_type] {
+                    return &[#comma_sep_column_variants]
                 }
 
                 fn col_name(col_index: #column_type) -> &'static str {
