@@ -492,23 +492,6 @@ impl ToTokens for TableRowDeriveInput {
         // List of Column => "name",
         let mut col_name_match_arms = vec![];
 
-        // User provided type converted to an enum with supported types.
-        let column_index_type = column_index_type
-            .as_ref()
-            .map_or(ColumnIndexType::Usize, |t| match t {
-                Type::Path(token_stream) => match token_stream.path.get_ident() {
-                    Some(ident) => {
-                        if *ident == "usize" {
-                            ColumnIndexType::Usize
-                        } else {
-                            ColumnIndexType::Enum
-                        }
-                    }
-                    None => ColumnIndexType::Usize,
-                },
-                _ => ColumnIndexType::Usize,
-            });
-
         // Accumulates the enum variants during the fields loop
         let mut enum_tokens: Option<_> = if matches!(column_index_type, ColumnIndexType::Enum) {
             Some(quote! {})

@@ -31,7 +31,7 @@ pub(crate) struct TableRowDeriveInput {
     pub(crate) impl_vec_data_provider: bool,
 
     #[darling(default)]
-    pub(crate) column_index_type: Option<syn::Type>,
+    pub(crate) column_index_type: ColumnIndexType,
 
     #[darling(default)]
     pub(crate) row_type: Option<syn::Type>,
@@ -42,6 +42,7 @@ pub(crate) struct TableRowDeriveInput {
 
 /// How to fill in the generic column type.
 #[derive(Debug, FromMeta, Default)]
+#[darling(rename_all = "lowercase")]
 pub(crate) enum ColumnIndexType {
     /// 0-based index based on struct field positions.
     #[default]
