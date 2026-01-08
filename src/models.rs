@@ -14,6 +14,7 @@ use syn::punctuated::Punctuated;
 )]
 pub(crate) struct TableRowDeriveInput {
     pub(crate) ident: syn::Ident,
+    pub(crate) vis: syn::Visibility,
     pub(crate) data: ast::Data<util::Ignored, TableRowField>,
     pub(crate) generics: syn::Generics,
 
@@ -30,10 +31,24 @@ pub(crate) struct TableRowDeriveInput {
     pub(crate) impl_vec_data_provider: bool,
 
     #[darling(default)]
+    pub(crate) column_index_type: ColumnIndexType,
+
+    #[darling(default)]
     pub(crate) row_type: Option<syn::Type>,
 
     #[darling(default)]
     pub(crate) i18n: Option<I18nStructOptions>,
+}
+
+/// How to fill in the generic column type.
+#[derive(Debug, FromMeta, Default)]
+#[darling(rename_all = "lowercase")]
+pub(crate) enum ColumnIndexType {
+    /// 0-based index based on struct field positions.
+    #[default]
+    Usize,
+    /// Generated enum, variants based on struct field names
+    Enum,
 }
 
 #[derive(Debug, FromField)]
