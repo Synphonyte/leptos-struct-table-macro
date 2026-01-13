@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use darling::util::IdentString;
-use darling::{ast, util, FromMeta};
 use darling::{FromDeriveInput, FromField};
+use darling::{FromMeta, ast, util};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 
