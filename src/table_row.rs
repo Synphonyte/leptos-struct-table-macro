@@ -702,7 +702,7 @@ impl ToTokens for TableRowDeriveInput {
 
                     #i18n
 
-                    let drag_state = DragStateRwSignal::new(None);
+                    let drag_state = leptos_struct_table::DragStateRwSignal::new(None);
 
                     leptos::view! {
                         <For
