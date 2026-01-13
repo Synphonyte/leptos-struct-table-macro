@@ -2,8 +2,8 @@ use crate::models::{ColumnIndexType, I18nFieldOptions, TableRowDeriveInput, Tabl
 use darling::util::IdentString;
 use heck::{ToTitleCase, ToUpperCamelCase};
 use proc_macro2::{Ident, TokenStream};
-use quote::{format_ident, quote, ToTokens};
-use syn::{Error, PathSegment, Type, WhereClause, __private::TokenStream2};
+use quote::{ToTokens, format_ident, quote};
+use syn::{__private::TokenStream2, Error, PathSegment, Type, WhereClause};
 
 fn get_default_renderer_for_field_getter(
     class_prop: &TokenStream,
@@ -579,7 +579,9 @@ impl ToTokens for TableRowDeriveInput {
                     })
                     sort_direction=leptos::prelude::Signal::derive(move || leptos_struct_table::get_sorting_for_column(#column, sorting))
                     #on_click_handling
-                    drag_manager=drag_manager.clone()
+                    drag_state=drag_state
+                    drag_handler=drag_handler.clone()
+                    columns=columns
                 >
                     #title
                 </#thead_cell_renderer>
@@ -686,7 +688,7 @@ impl ToTokens for TableRowDeriveInput {
                 fn render_head_row<F>(
                     sorting: Signal<std::collections::VecDeque<(#column_type, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
-                    drag_manager: leptos_struct_table::DragManager<#column_type>,
+                    drag_handler: leptos_struct_table::HeadDragHandler<#column_type>,
                     columns: RwSignal<Vec<#column_type>>
                 ) -> impl leptos::IntoView
                 where
@@ -699,6 +701,8 @@ impl ToTokens for TableRowDeriveInput {
                     let class_provider = Self::ClassesProvider::new();
 
                     #i18n
+
+                    let drag_state = DragStateRwSignal::new(None);
 
                     leptos::view! {
                         <For
