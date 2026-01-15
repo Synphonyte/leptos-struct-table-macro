@@ -276,7 +276,7 @@ fn get_renderer_for_field(
     };
 
     let class = field.cell_class();
-    let class_prop = quote! { class=class_provider.cell( # class) };
+    let class_prop = quote! { class=class_provider.cell( format!("{} {}", #class, dynamic_class).as_str()) };
 
     let value_prop = quote! {
         value={
@@ -485,10 +485,19 @@ impl ToTokens for TableRowDeriveInput {
             |row_type| quote! { #row_type },
         );
 
+        let classes_provider_ident = classes_provider
+            .as_ref()
+            .map(|id| quote! { #id })
+            .unwrap_or(quote! { leptos_struct_table::DummyTableClassesProvider });
+
         // Head-row cells
         let mut titles = vec![];
         // Row cells
         let mut cells = vec![];
+        // Row cell functions, e.g. fun cell_renderer_for_field_name() -> impl IntoView { ... }
+        let mut cell_funs = vec![];
+        // Match arms on column type to call the appropriate cell renderer for that column.
+        let mut cell_renderer_invocation_match_arms = vec![];
         // List of Column => "name",
         let mut col_name_match_arms = vec![];
 
@@ -589,17 +598,19 @@ impl ToTokens for TableRowDeriveInput {
             titles.push(quote! { #column => leptos::view! { #thead_renderer }.into_any(), });
 
             let cell_renderer = get_renderer_for_field(name, f, &column_type, &column);
+            let cell_renderer_fn_ident = format_ident!("cell_renderer_for_{name}");
+            cell_funs.push(quote! {
+                fn #cell_renderer_fn_ident(row: RwSignal<#ident>, dynamic_class: String) -> leptos::prelude::AnyView {
+                    type DefaultMarker = ();
+                    let class_provider = #classes_provider_ident::new();
+
+                    leptos::view! { #cell_renderer }.into_any()
+                }
+            });
+            cell_renderer_invocation_match_arms
+                .push(quote! { #column => Self::#cell_renderer_fn_ident(row, dynamic_class), });
             cells.push(quote! { #column => leptos::view! { #cell_renderer }.into_any(), });
         }
-
-        let comma_sep_column_variants = column_variants
-            .clone()
-            .into_iter()
-            .reduce(|mut acc, e| {
-                acc.extend([quote! {, }, e]);
-                acc
-            })
-            .unwrap_or_default();
 
         if let Some(enum_variants) = enum_tokens {
             enum_tokens = Some(quote! {
@@ -616,7 +627,7 @@ impl ToTokens for TableRowDeriveInput {
                 &ident,
                 &generic_params_wb,
                 &column_type,
-                column_variants,
+                column_variants.clone(),
                 where_clause,
                 sortable,
                 &fields,
@@ -624,11 +635,6 @@ impl ToTokens for TableRowDeriveInput {
         } else {
             quote! {}
         };
-
-        let classes_provider_ident = classes_provider
-            .as_ref()
-            .map(|id| quote! { #id })
-            .unwrap_or(quote! { leptos_struct_table::DummyTableClassesProvider });
 
         let column_count = cells.len();
 
@@ -656,6 +662,10 @@ impl ToTokens for TableRowDeriveInput {
 
             #enum_tokens
 
+            impl #ident {
+                #(#cell_funs)*
+            }
+
             impl #generic_params_wb leptos_struct_table::TableRow<#column_type> for #ident
             #where_clause
             {
@@ -670,7 +680,8 @@ impl ToTokens for TableRowDeriveInput {
                     type DefaultMarker = ();
 
                     let class_provider = Self::ClassesProvider::new();
-
+                    let dynamic_class = String::new();
+                    
                     leptos::view! {
                         <For
                             each=move || columns.get().into_iter()
@@ -718,8 +729,17 @@ impl ToTokens for TableRowDeriveInput {
                     }
                 }
 
+                /// Returns the cell renderer for a **column**
+                /// Allows to create custom row renders while still using the annotation configured cell renderers.
+                fn cell_renderer_for_column(row: RwSignal<#ident>, column: #column_type, dynamic_class: String) -> leptos::prelude::AnyView {
+                    match column {
+                        #(#cell_renderer_invocation_match_arms)*
+                        other => leptos::view! { "Unmatched column type {other:?}, probably a bug." }.into_any()
+                    }
+                }
+
                 fn columns() -> &'static [#column_type] {
-                    return &[#comma_sep_column_variants]
+                    return &[#(#column_variants,)*]
                 }
 
                 fn col_name(col_index: #column_type) -> &'static str {
