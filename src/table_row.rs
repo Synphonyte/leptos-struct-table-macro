@@ -613,13 +613,13 @@ impl ToTokens for TableRowDeriveInput {
                 f,
                 &column_type,
                 &column,
-                vec![quote! { leptos::prelude::Get::get(&dynamic_class) }],
+                vec![quote! { leptos::prelude::ReadValue::read_value(&dynamic_class) }],
             );
             let cell_renderer_fn_ident = format_ident!("cell_renderer_for_{name}");
             cell_funs.push(quote! {
                 fn #cell_renderer_fn_ident(row: RwSignal<#ident>, dynamic_class: String) -> leptos::prelude::AnyView {
                     type DefaultMarker = ();
-                    let dynamic_class = RwSignal::new(dynamic_class); // Needed a Copy type to pass into Fn or FnMut closures.
+                    let dynamic_class = leptos::prelude::StoredValue::new(dynamic_class); // Needed a Copy type to pass into Fn or FnMut closures.
 
                     let class_provider = <#classes_provider_ident as leptos_struct_table::TableClassesProvider>::new();
 
