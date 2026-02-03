@@ -115,7 +115,7 @@ fn get_default_option_renderer(
                                     leptos::view! {
                                         <leptos_struct_table::DefaultTableCellRenderer<_, #column_type, String, DefaultMarker>
                                             value=leptos::prelude::Signal::stored(#none_value.to_string())
-                                            options={()}
+                                            options=()
                                             #class_prop #index_prop row=row
                                         />
                                     }
@@ -268,6 +268,7 @@ fn get_renderer_for_field(
     field: &TableRowField,
     column_type: &TokenStream,
     index: &TokenStream,
+    extra_classes: Vec<TokenStream>,
 ) -> TokenStream2 {
     let getter = get_getter(name, &field.getter, &field.ty);
 
@@ -276,7 +277,15 @@ fn get_renderer_for_field(
     };
 
     let class = field.cell_class();
-    let class_prop = quote! { class=class_provider.cell( format!("{} {}", #class, dynamic_class).as_str()) };
+    let joined_classes = if extra_classes.is_empty() {
+        quote! { #class }
+    } else {
+        let mut places = extra_classes.iter().map(|_| "{}").collect::<Vec<&str>>();
+        places.push("{}");
+        let places = places.join(" ");
+        quote! { format!(#places, #class #(, #extra_classes)*).as_str() }
+    };
+    let class_prop = quote! { class=leptos_struct_table::TableClassesProvider::cell(&class_provider, #joined_classes) };
 
     let value_prop = quote! {
         value={
@@ -597,19 +606,32 @@ impl ToTokens for TableRowDeriveInput {
             };
             titles.push(quote! { #column => leptos::view! { #thead_renderer }.into_any(), });
 
-            let cell_renderer = get_renderer_for_field(name, f, &column_type, &column);
+            // Exposing default cell renderer logic for cell_renderer_for_column.
+            // there is some added complexity due to needing to pass classes into Fn closures.
+            let cell_renderer_dyn_class = get_renderer_for_field(
+                name,
+                f,
+                &column_type,
+                &column,
+                vec![quote! { leptos::prelude::ReadValue::read_value(&dynamic_class) }],
+            );
             let cell_renderer_fn_ident = format_ident!("cell_renderer_for_{name}");
             cell_funs.push(quote! {
                 fn #cell_renderer_fn_ident(row: RwSignal<#ident>, dynamic_class: String) -> leptos::prelude::AnyView {
                     type DefaultMarker = ();
-                    let class_provider = #classes_provider_ident::new();
+                    let dynamic_class = leptos::prelude::StoredValue::new(dynamic_class); // Needed a Copy type to pass into Fn or FnMut closures.
 
-                    leptos::view! { #cell_renderer }.into_any()
+                    let class_provider = <#classes_provider_ident as leptos_struct_table::TableClassesProvider>::new();
+
+                    leptos::prelude::IntoAny::into_any(leptos::view! { #cell_renderer_dyn_class })
                 }
             });
             cell_renderer_invocation_match_arms
                 .push(quote! { #column => Self::#cell_renderer_fn_ident(row, dynamic_class), });
-            cells.push(quote! { #column => leptos::view! { #cell_renderer }.into_any(), });
+
+            // Normal cell renderers used in render_row
+            let cell_renderer = get_renderer_for_field(name, f, &column_type, &column, vec![]);
+            cells.push(quote! { #column => leptos::prelude::IntoAny::into_any(leptos::view! { #cell_renderer }), });
         }
 
         if let Some(enum_variants) = enum_tokens {
@@ -662,7 +684,9 @@ impl ToTokens for TableRowDeriveInput {
 
             #enum_tokens
 
-            impl #ident {
+            impl #generic_params_wb #ident
+            #where_clause
+            {
                 #(#cell_funs)*
             }
 
@@ -680,8 +704,6 @@ impl ToTokens for TableRowDeriveInput {
                     type DefaultMarker = ();
 
                     let class_provider = Self::ClassesProvider::new();
-                    let dynamic_class = String::new();
-                    
                     leptos::view! {
                         <For
                             each=move || columns.get().into_iter()
@@ -689,7 +711,9 @@ impl ToTokens for TableRowDeriveInput {
                             children=move |column| {
                                 match column {
                                     #(#cells)*
-                                    other => leptos::view! { "Unmatched column type {other:?}, probably a bug." }.into_any()
+                                    other => leptos::view! {
+                                        format!("Unmatched column type {other:?}, probably a bug.") 
+                                    }.into_any()
                                 }
                             }>
                         </For>
@@ -722,7 +746,9 @@ impl ToTokens for TableRowDeriveInput {
                             children=move |column| {
                                 match column {
                                     #(#titles)*
-                                    other => leptos::view! { "Unmatched column type {other:?}, probably a bug." }.into_any()
+                                    other => leptos::view! {
+                                        format!("Unmatched column type {other:?}, probably a bug.") 
+                                    }.into_any()
                                 }
                             }>
                         </For>
@@ -734,7 +760,9 @@ impl ToTokens for TableRowDeriveInput {
                 fn cell_renderer_for_column(row: RwSignal<#ident>, column: #column_type, dynamic_class: String) -> leptos::prelude::AnyView {
                     match column {
                         #(#cell_renderer_invocation_match_arms)*
-                        other => leptos::view! { "Unmatched column type {other:?}, probably a bug." }.into_any()
+                        other => leptos::prelude::IntoAny::into_any(leptos::view! {
+                            format!("Unmatched column type {other:?}, probably a bug.") 
+                        })
                     }
                 }
 
