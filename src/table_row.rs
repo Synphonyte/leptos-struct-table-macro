@@ -135,12 +135,11 @@ fn get_default_option_renderer(
 }
 
 fn is_option(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            if segment.ident == "Option" {
-                return true;
-            }
-        }
+    if let syn::Type::Path(type_path) = ty
+        && let Some(segment) = type_path.path.segments.last()
+        && segment.ident == "Option"
+    {
+        return true;
     }
     false
 }
@@ -255,6 +254,9 @@ fn get_default_cell_value_marker(ty: &syn::Type) -> TokenStream2 {
                 "PrimitiveDateTime" => quote! { PrimitiveDateTime },
                 "OffsetDateTime" => quote! { OffsetDateTime },
                 "Uuid" => quote! { Uuid },
+                "DateTime" => quote! { DateTime },
+                "Timestamp" => quote! { Timestamp },
+                "Zoned" => quote! { Zoned },
                 _ => quote! { DefaultMarker },
             }
         }
@@ -712,7 +714,7 @@ impl ToTokens for TableRowDeriveInput {
                                 match column {
                                     #(#cells)*
                                     other => leptos::view! {
-                                        format!("Unmatched column type {other:?}, probably a bug.") 
+                                        format!("Unmatched column type {other:?}, probably a bug.")
                                     }.into_any()
                                 }
                             }>
@@ -747,7 +749,7 @@ impl ToTokens for TableRowDeriveInput {
                                 match column {
                                     #(#titles)*
                                     other => leptos::view! {
-                                        format!("Unmatched column type {other:?}, probably a bug.") 
+                                        format!("Unmatched column type {other:?}, probably a bug.")
                                     }.into_any()
                                 }
                             }>
@@ -761,7 +763,7 @@ impl ToTokens for TableRowDeriveInput {
                     match column {
                         #(#cell_renderer_invocation_match_arms)*
                         other => leptos::prelude::IntoAny::into_any(leptos::view! {
-                            format!("Unmatched column type {other:?}, probably a bug.") 
+                            format!("Unmatched column type {other:?}, probably a bug.")
                         })
                     }
                 }
