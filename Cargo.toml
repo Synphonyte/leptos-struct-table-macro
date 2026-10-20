@@ -1,6 +1,6 @@
 [package]
 name = "leptos-struct-table-macro"
-version = "0.15.1"
+version = "0.15.2"
 edition = "2024"
 description = "Macros for the leptos-struct-table crate."
 exclude = ["examples/", "tests/"]
