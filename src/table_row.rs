@@ -619,7 +619,7 @@ impl ToTokens for TableRowDeriveInput {
             );
             let cell_renderer_fn_ident = format_ident!("cell_renderer_for_{name}");
             cell_funs.push(quote! {
-                fn #cell_renderer_fn_ident(row: RwSignal<#ident>, dynamic_class: String) -> leptos::prelude::AnyView {
+                fn #cell_renderer_fn_ident(row: leptos::prelude::RwSignal<#ident>, dynamic_class: String) -> leptos::prelude::AnyView {
                     type DefaultMarker = ();
                     let dynamic_class = leptos::prelude::StoredValue::new(dynamic_class); // Needed a Copy type to pass into Fn or FnMut closures.
 
@@ -680,8 +680,6 @@ impl ToTokens for TableRowDeriveInput {
         };
 
         tokens.extend(quote! {
-            use leptos::prelude::{Signal, RwSignal};
-
             #data_provider_logic
 
             #enum_tokens
@@ -699,7 +697,7 @@ impl ToTokens for TableRowDeriveInput {
 
                 const COLUMN_COUNT: usize = #column_count;
 
-                fn render_row(row: RwSignal<Self>, index: usize, columns: RwSignal<Vec<#column_type>>) -> impl leptos::IntoView {
+                fn render_row(row: leptos::prelude::RwSignal<Self>, index: usize, columns: leptos::prelude::RwSignal<Vec<#column_type>>) -> impl leptos::IntoView {
                     use leptos_struct_table::TableClassesProvider;
                     use leptos::control_flow::For;
                     use leptos::prelude::{Get, IntoAny};
@@ -723,10 +721,10 @@ impl ToTokens for TableRowDeriveInput {
                 }
 
                 fn render_head_row<F>(
-                    sorting: Signal<std::collections::VecDeque<(#column_type, leptos_struct_table::ColumnSort)>>,
+                    sorting: leptos::prelude::Signal<std::collections::VecDeque<(#column_type, leptos_struct_table::ColumnSort)>>,
                     on_head_click: F,
                     drag_handler: leptos_struct_table::HeadDragHandler<#column_type>,
-                    columns: RwSignal<Vec<#column_type>>
+                    columns: leptos::prelude::RwSignal<Vec<#column_type>>
                 ) -> impl leptos::IntoView
                 where
                     F: Fn(leptos_struct_table::TableHeadEvent<#column_type>) + Send + Clone + 'static,
@@ -759,7 +757,7 @@ impl ToTokens for TableRowDeriveInput {
 
                 /// Returns the cell renderer for a **column**
                 /// Allows to create custom row renders while still using the annotation configured cell renderers.
-                fn cell_renderer_for_column(row: RwSignal<#ident>, column: #column_type, dynamic_class: String) -> leptos::prelude::AnyView {
+                fn cell_renderer_for_column(row: leptos::prelude::RwSignal<#ident>, column: #column_type, dynamic_class: String) -> leptos::prelude::AnyView {
                     match column {
                         #(#cell_renderer_invocation_match_arms)*
                         other => leptos::prelude::IntoAny::into_any(leptos::view! {
