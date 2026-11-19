@@ -257,6 +257,7 @@ fn get_default_cell_value_marker(ty: &syn::Type) -> TokenStream2 {
                 "DateTime" => quote! { DateTime },
                 "Timestamp" => quote! { Timestamp },
                 "Zoned" => quote! { Zoned },
+                "ZonedDateTime" => quote! { ZonedDateTime },
                 _ => quote! { DefaultMarker },
             }
         }
